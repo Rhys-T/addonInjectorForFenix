@@ -59,6 +59,7 @@ const args = yargs(hideBin(process.argv))
 		})
 		.option('dump', {
 			type: 'boolean',
+			description: 'Dump generated JSON to stdout instead of injecting (collection only)',
 			conflicts: ['file'],
 		})
 	)
