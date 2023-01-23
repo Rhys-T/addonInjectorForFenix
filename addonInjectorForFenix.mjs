@@ -46,6 +46,7 @@ const args = yargs(hideBin(process.argv))
 			alias: 'S',
 			default: '-popularity',
 			description: 'Sort order (collection only)',
+			implies: 'collection',
 		})
 		.option('device', {
 			type: 'string',
@@ -60,7 +61,7 @@ const args = yargs(hideBin(process.argv))
 		.option('dump', {
 			type: 'boolean',
 			description: 'Dump generated JSON to stdout instead of injecting (collection only)',
-			conflicts: ['file'],
+			implies: 'collection',
 		})
 	)
 .argv;
