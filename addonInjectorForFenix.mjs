@@ -66,6 +66,7 @@ const args = yargs(hideBin(process.argv))
 const adb = [
 	...args.noFwmark ? ['env', 'ANDROID_NO_USE_FWMARK_CLIENT=1', 'fakeroot'] : [],
 	'adb',
+	...args.device ? ['-s', args.device] : [],
 ];
 const [adbCmd, ...adbArgs] = adb;
 console.log(args);
