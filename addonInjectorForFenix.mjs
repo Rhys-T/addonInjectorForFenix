@@ -40,6 +40,7 @@ const args = yargs(hideBin(process.argv))
 			alias: 'l',
 			default: 'en-US',
 			description: 'ISO language code, or empty string (collection only)',
+			implies: 'collection',
 		})
 		.option('sort', {
 			choices: ['popularity', 'name', 'desc'].flatMap(x => [x, '-'+x]),
