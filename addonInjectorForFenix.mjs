@@ -38,14 +38,12 @@ const args = yargs(hideBin(process.argv))
 		.option('language', {
 			type: 'string',
 			alias: 'l',
-			default: 'en-US',
 			description: 'ISO language code, or empty string (collection only)',
 			implies: 'collection',
 		})
 		.option('sort', {
 			choices: ['popularity', 'name', 'desc'].flatMap(x => [x, '-'+x]),
 			alias: 'S',
-			default: '-popularity',
 			description: 'Sort order (collection only)',
 			implies: 'collection',
 		})
@@ -66,6 +64,12 @@ const args = yargs(hideBin(process.argv))
 		})
 	)
 .argv;
+if(args.language === undefined) {
+	args.language = 'en-US';
+}
+if(args.sort === undefined) {
+	args.sort = '-popularity';
+}
 const adb = [
 	...args.noFwmark ? ['env', 'ANDROID_NO_USE_FWMARK_CLIENT=1', 'fakeroot'] : [],
 	'adb',
