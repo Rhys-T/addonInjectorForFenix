@@ -168,6 +168,11 @@ try {
 		const ostream = FileUtils.openAtomicFileOutputStream(file);
 		try {
 			const encodedArray = new TextEncoder().encode(addonData);
+			// You'd think I could just do:
+			// 	const encoded = new TextDecoder('latin1').decode(encodedArray);
+			// but 'latin1' is _actually_ Windows-1252, for the usual 'broken IE compatibility nonsense' reasons,
+			// and they haven't added _real_ ISO-8859-1. So I have to do it the hard way, and work around
+			// argument list length limits.
 			let encoded = '';
 			const chunkSize = 102400;
 			for(let i = 0; i < encodedArray.length; i += chunkSize) {
@@ -179,6 +184,7 @@ try {
 			FileUtils.closeAtomicFileOutputStream(ostream);
 		}
 		file = new FileUtils.File(file.path);
+		// Not quite 100 years, because length limits, but long enough:
 		file.lastModifiedTime += 100*365*24*60*60*1000;
 		return `${oldFile.permissions.toString(8)} -> ${file.permissions.toString(8)}\n${oldFile.fileSize} -> ${file.fileSize}\nWrote to ${file.path}`;
 	}, addonData));
