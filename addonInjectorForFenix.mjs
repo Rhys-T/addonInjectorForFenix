@@ -39,13 +39,13 @@ const args = yargs(hideBin(process.argv))
 			type: 'string',
 			alias: 'l',
 			description: 'ISO language code, or empty string (collection only)',
-			implies: 'collection',
+			conflicts: 'file',
 		})
 		.option('sort', {
 			choices: ['popularity', 'name', 'desc'].flatMap(x => [x, '-'+x]),
 			alias: 'S',
 			description: 'Sort order (collection only)',
-			implies: 'collection',
+			conflicts: 'file',
 		})
 		.option('device', {
 			type: 'string',
@@ -60,7 +60,7 @@ const args = yargs(hideBin(process.argv))
 		.option('dump', {
 			type: 'boolean',
 			description: 'Dump generated JSON to stdout instead of injecting (collection only)',
-			implies: 'collection',
+			conflicts: 'file',
 		})
 	)
 .argv;
