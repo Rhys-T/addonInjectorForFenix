@@ -287,7 +287,7 @@ try {
 			FileUtils.closeAtomicFileOutputStream(ostream);
 		}
 		file = new FileUtils.File(file.path);
-		// Not quite 100 years, because length limits, but long enough:
+		// Not quite 100 years, because leap years, but long enough:
 		file.lastModifiedTime += 100*365*24*60*60*1000;
 		return `${oldFile.permissions.toString(8)} -> ${file.permissions.toString(8)}\n${oldFile.fileSize} -> ${file.fileSize}\nWrote to ${file.path}`;
 	}, addonData));
