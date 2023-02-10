@@ -16,6 +16,7 @@ import os from 'os';
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers';
 import * as cheerio from 'cheerio';
+import orderBy from 'lodash.orderby';
 import child_process from 'child_process';
 
 const myConsole = new console.Console(process.stderr);
@@ -62,7 +63,7 @@ const args = yargs(hideBin(process.argv))
 			conflicts: 'file',
 		})
 		.option('sort', {
-			choices: ['popularity', 'name', 'desc'].flatMap(x => [x, '-'+x]),
+			choices: ['popularity', 'name', 'added'].flatMap(x => [x, '-'+x]),
 			alias: 'S',
 			description: 'Sort order (collection only)',
 			conflicts: 'file',
@@ -205,6 +206,12 @@ if(args.extraAddons?.length) {
 			});
 		}
 	}
+	const [, sortMinus, sortType] = /^(-?)(\w+)$/.exec(args.sort);
+	results = orderBy(results, [{
+		name: ({addon}) => addon.name.toLowerCase(), // NOTE: probably not quite the same as what Mozilla is doing - Unicode weirdness etc.
+		added: ({addon}) => new Date(addon.created),
+		popularity: ({addon}) => addon.weekly_downloads,
+	}[sortType]], [sortMinus ? 'desc' : 'asc']);
 	addonData = {
 		page_size: results.length,
 		page_count: 1,
