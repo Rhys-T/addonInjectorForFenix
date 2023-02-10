@@ -15,9 +15,12 @@ import path from 'path';
 import os from 'os';
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers';
+import * as cheerio from 'cheerio';
 import child_process from 'child_process';
 
-// console.log(yargs);
+const myConsole = new console.Console(process.stderr);
+
+// myConsole.log(yargs);
 const args = yargs(hideBin(process.argv))
 	.scriptName('addonInjectorForFenix')
 	.strict()
@@ -34,6 +37,23 @@ const args = yargs(hideBin(process.argv))
 			alias: 'f',
 			description: 'Inject premade json file instead of an addon collection',
 			conflicts: ['user', 'collection'],
+		})
+		.option('user-agent', {
+			type: 'string',
+			alias: 'U',
+			description: 'User-Agent to use when fetching addon data',
+			default: 'Firefox/109.0',
+		})
+		.option('no-list', {
+			type: 'boolean',
+			alias: 'n',
+			description: 'Start from an empty addon list (use -a to extend)',
+			conflicts: ['user', 'collection', 'file'],
+		})
+		.option('extra-addons', {
+			type: 'array',
+			alias: 'a',
+			description: 'Addons to insert into list. Each can be an "Extension ID" from about:debugging, or an AMO URL to scrape',
 		})
 		.option('language', {
 			type: 'string',
@@ -76,12 +96,24 @@ const adb = [
 	...args.device ? ['-s', args.device] : [],
 ];
 const [adbCmd, ...adbArgs] = adb;
-console.log(args);
-console.log(adbCmd, adbArgs);
+myConsole.log(args);
+// process.exit();
+myConsole.log(adbCmd, adbArgs);
+
+const {userAgent} = args;
 
 let addonData;
-if(args.file) {
-	addonData = fs.readFileSync(args.file, 'utf-8');
+if(args.noList) {
+	addonData = {
+		page_size: 50,
+		page_count: 1,
+		count: 0,
+		next: null,
+		previous: null,
+		results: [],
+	};
+} else if(args.file) {
+	addonData = JSON.parse(fs.readFileSync(args.file, 'utf-8'));
 } else {
 	let {user, collection} = args;
 	if(user === undefined && collection === undefined) {
@@ -97,29 +129,99 @@ if(args.file) {
 	let nextPageURL = `https://services.addons.mozilla.org/api/v4/accounts/account/${encodeURIComponent(user)}/collections/${encodeURIComponent(collection)}/addons/?${firstPageParams}`;
 	const resultLists = [];
 	while(nextPageURL) {
-		console.log(nextPageURL);
-		const response = await fetch(nextPageURL);
+		myConsole.log(nextPageURL);
+		const response = await fetch(nextPageURL, {
+			headers: {
+				'User-Agent': userAgent,
+			},
+		});
 		const responseData = await response.json();
 		nextPageURL = responseData.next;
 		resultLists.push(responseData.results);
 	}
 	const results = resultLists.flat();
-	addonData = JSON.stringify({
+	addonData = {
 		page_size: results.length,
 		page_count: 1,
 		count: results.length,
 		next: null,
 		previous: null,
 		results,
-	});
+	};
 }
+if(args.extraAddons?.length) {
+	const ids = [], urls = [];
+	for(const addonSpec of args.extraAddons) {
+		(addonSpec.startsWith('https://addons.mozilla.org/') ? urls : ids).push(addonSpec);
+	}
+	const oldResults = addonData.results;
+	let results;
+	if(ids.length) {
+		const firstPageParams = new URLSearchParams();
+		firstPageParams.set('page_size', '50');
+		firstPageParams.set('sort', args.sort);
+		if(args.language) {
+			firstPageParams.set('lang', args.language);
+		}
+		let nextPageURL = `https://services.addons.mozilla.org/api/v4/accounts/account/${encodeURIComponent(user)}/collections/${encodeURIComponent(collection)}/addons/?${firstPageParams}`;
+		const resultLists = [oldResults];
+		while(nextPageURL) {
+			myConsole.log(nextPageURL);
+			const response = await fetch(nextPageURL, {
+				headers: {
+					'User-Agent': userAgent,
+				},
+			});
+			const responseData = await response.json();
+			nextPageURL = responseData.next;
+			resultLists.push(responseData.results);
+		}
+		results = resultLists.flat();
+	} else {
+		results = oldResults;
+	}
+	for(const addonURL of urls) {
+		myConsole.log(addonURL);
+		const response = await fetch(addonURL, {
+			headers: {
+				'User-Agent': userAgent,
+			},
+		});
+		const responseData = await response.text();
+		const $ = cheerio.load(responseData);
+		const reduxState = JSON.parse($('#redux-store-state').text());
+		// myConsole.log(reduxState.addons.byID);
+		// results.push(...Object.values(reduxState.addons.byID));
+		for(const addon of Object.values(reduxState.addons.byID)) {
+			if(!('current_version' in addon)) {
+				addon.current_version = reduxState.versions.byId[addon.currentVersionId];
+			}
+			if(!('files' in addon.current_version)) {
+				addon.current_version.files = [addon.current_version.file];
+			}
+			results.push({
+				addon,
+				notes: null,
+			});
+		}
+	}
+	addonData = {
+		page_size: results.length,
+		page_count: 1,
+		count: results.length,
+		next: null,
+		previous: null,
+		results,
+	};
+}
+addonData = JSON.stringify(addonData);
 if(args.dump) {
-	process.stdout.write(addonData);
+	await new Promise(resolve => process.stdout.write(addonData, resolve));
 	process.exit();
 }
 // process.exit();
 
-JSON.parse(addonData); // validate
+// JSON.parse(addonData); // validate
 
 // Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
 const oldCreateConnection = net.createConnection;
@@ -143,7 +245,8 @@ try {
 	const procTargetMsg = await procDescActor.request('getTarget');
 	const procTargetActor = new Actor(client, procTargetMsg.process.actor, procTargetMsg.process);
 	const procConsole = procTargetActor._get('console');
-	console.log(await procConsole.evaluateJSAsync(function(addonData) {
+	myConsole.log(await procConsole.evaluateJSAsync(function(addonData) {
+		JSON.parse(addonData);
 		const dummyScope = {};
 		// const {NetUtil} = Cu.import("resource://gre/modules/NetUtil.jsm", dummyScope);
 		const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm", dummyScope);
