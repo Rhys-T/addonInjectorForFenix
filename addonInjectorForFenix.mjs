@@ -164,11 +164,11 @@ if(args.extraAddons?.length) {
 	if(ids.length) {
 		const firstPageParams = new URLSearchParams();
 		firstPageParams.set('page_size', '50');
-		firstPageParams.set('sort', args.sort);
 		if(args.language) {
 			firstPageParams.set('lang', args.language);
 		}
-		let nextPageURL = `https://services.addons.mozilla.org/api/v4/accounts/account/${encodeURIComponent(user)}/collections/${encodeURIComponent(collection)}/addons/?${firstPageParams}`;
+		firstPageParams.set('guid', ids.join(','));
+		let nextPageURL = `https://services.addons.mozilla.org/api/v4/addons/search/?${firstPageParams}`;
 		const resultLists = [oldResults];
 		while(nextPageURL) {
 			myConsole.log(nextPageURL);
@@ -178,8 +178,9 @@ if(args.extraAddons?.length) {
 				},
 			});
 			const responseData = await response.json();
+			myConsole.log(responseData);
 			nextPageURL = responseData.next;
-			resultLists.push(responseData.results);
+			resultLists.push(responseData.results.map(addon => ({addon, notes: null})));
 		}
 		results = resultLists.flat();
 	} else {
