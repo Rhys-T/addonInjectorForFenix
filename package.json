@@ -5,7 +5,6 @@
     "@babel/runtime": "^7.20.7",
     "cheerio": "^1.0.0-rc.12",
     "foxdriver": "^1.0.6",
-    "lodash.orderby": "^4.6.0",
     "yargs": "^17.6.2"
   },
   "scripts": {},
