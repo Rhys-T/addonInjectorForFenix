@@ -38,15 +38,39 @@ if(typeof processEvents?.warning === 'function') {
 	}
 }
 
+const preArgs = yargs()
+	.help(false)
+	.option('no-config', {
+		type: 'boolean',
+		alias: 'N',
+	})
+	.option('config', {
+		type: 'string',
+		alias: 'C',
+	})
+.parseSync(hideBin(process.argv));
+
 // console.log(yargs);
-const args = yargs()
+let argsParser = yargs()
 	.scriptName('addonInjectorForFenix')
 	.strict()
 	// .wrap(yargs.terminalWidth())
 	.usage('Inject custom addon list into release version of Android Firefox')
-	.option('collection', {
+	.option('config', {
 		type: 'string',
 		alias: 'C',
+		default: preArgs.noConfig ? undefined : path.join(process.env['XDG_CONFIG_HOME'] || path.join(/** @type {string} */ (process.env['HOME']), '.config'), 'addonInjectorForFenix.config.json'),
+		defaultDescription: '$XDG_CONFIG_HOME/addonInjectorForFenix.config.json',
+		conflicts: (preArgs.config && preArgs.noConfig) ? ['no-config'] : undefined,
+	})
+	.option('no-config', {
+		type: 'boolean',
+		alias: 'N',
+		description: "Don't load any config file",
+	})
+	.option('collection', {
+		type: 'string',
+		alias: 'c',
 		description: "AMO user name/ID and collection name/ID to fetch, separated by '/'",
 		default: '16201230/What-I-want-on-Fenix',
 		defaultDescription: `"16201230/What-I-want-on-Fenix" (Iceraven's collection)`,
@@ -115,7 +139,20 @@ const args = yargs()
 	// 		throw new Error("AMO collection must be specified as '<user>/<collection>");
 	// 	}
 	// })
-.parseSync(hideBin(process.argv));
+;
+if(!(preArgs.config && preArgs.noConfig)) {
+	argsParser = argsParser.config('config', configPath => {
+		try {
+			return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+		} catch(e) {
+			if(!preArgs.config && e.code === 'ENOENT') {
+				return {};
+			}
+			throw e;
+		}
+	});
+}
+const args = argsParser.parseSync(hideBin(process.argv));
 const adb = [
 	...args.noFwmark ? ['env', 'ANDROID_NO_USE_FWMARK_CLIENT=1', 'fakeroot'] : [],
 	'adb',
