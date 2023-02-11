@@ -50,6 +50,7 @@ const args = yargs()
 		description: "AMO user name/ID and collection name/ID to fetch, separated by '/'",
 		default: '16201230/What-I-want-on-Fenix',
 		defaultDescription: `"16201230/What-I-want-on-Fenix" (Iceraven's collection)`,
+		/** @param {string} collectionSpec */
 		coerce(collectionSpec) {
 			const result = collectionSpec.split('/');
 			if(result.length !== 2) {
@@ -142,7 +143,7 @@ if(args.file) {
 			results: [],
 		};
 	} else {
-		let [user, collection] = args.collection || ['16201230', 'What-I-want-on-Fenix'];
+		let [user, collection] = args.collection;
 		const firstPageParams = new URLSearchParams();
 		firstPageParams.set('page_size', '50');
 		firstPageParams.set('sort', args.sort);
