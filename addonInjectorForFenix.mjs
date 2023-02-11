@@ -220,9 +220,11 @@ if(args.file) {
 			for(const addon of Object.values(reduxState.addons.byID)) {
 				if(!('current_version' in addon)) {
 					addon.current_version = reduxState.versions.byId[addon.currentVersionId];
+					delete addon.currentVersionId;
 				}
 				if(!('files' in addon.current_version)) {
 					addon.current_version.files = [addon.current_version.file];
+					delete addon.current_version.file;
 				}
 				results.push({
 					addon,
