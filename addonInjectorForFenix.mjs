@@ -5,368 +5,539 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 // @ts-check
-import net from 'net';
-import Foxdriver from 'foxdriver';
-import Actor from 'foxdriver/build/actor.js';
 import process from 'process';
-// import repl from 'repl';
-import fs from 'fs';
+import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
-// yargs currently breaks mid-word when wrapping if it's imported as an ES6 module.
-// See https://github.com/yargs/yargs/issues/2112
-// So for now, load it via `require` instead.
-// import yargs from 'yargs';
-// import {hideBin} from 'yargs/helpers';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const yargs = require('yargs');
-const {hideBin} = require('yargs/helpers');
-import * as cheerio from 'cheerio';
-// import orderBy from 'lodash.orderby';
 import child_process from 'child_process';
-import { Console } from 'console';
-const console = new Console(process.stderr);
+import fs from 'fs';
+// import fsp from 'fs/promises';
+import toml from '@ltd/j-toml';
+import { Command } from 'commander';
 
-const processEvents = /** @type {any} */ (process)._events;
-if(typeof processEvents?.warning === 'function') {
-	const oldHandler = processEvents.warning;
-	processEvents.warning = function(warning, ...x) {
-		if(!(warning.name === 'ExperimentalWarning' && /\bFetch API\b/i.test(warning.message))) {
-			return oldHandler(warning, ...x);
-		}
-	}
-}
+/**
+ * @typedef {Object} AddonCollectionPage
+ * @property {number} page_size
+ * @property {number} page_count
+ * @property {number} count
+ * @property {?string} prev
+ * @property {?string} next
+ * @property {AddonCollectionEntry[]} results
+ * 
+ * @typedef {Object} AddonCollectionEntry
+ * @property {Addon} addon
+ * @property {?string} notes
+ * 
+ * @typedef {Object} Addon
+ * @property {string} guid
+ * 
+ * @typedef {Object} Config
+ * @property {string[]} useSources
+ * @property {number} maxFetches
+ * @property {string[] | undefined} moveToTop
+ * @property {boolean | 'auto'} noFwmark
+ * @property {string | undefined} device
+ * @property {string} app
+ * @property {string|undefined} outputPath
+ * @property {number} maxAge
+ * @property {Record<string, Source> & {_default: Source}} sources
+ * 
+ * @typedef {AddonCollectionSource | AddonJSONsSource | AddonGUIDsSource} Source
+ * 
+ * @typedef {Object} AddonCollectionSource
+ * @property {'addonCollection'} type
+ * @property {string} user
+ * @property {string} collection
+ * @property {string} language
+ * @property {?string} userAgent
+ * @property {'-popularity'|'popularity'|'-name'|'name'|'-added'|'added'} sort
+ * 
+ * @typedef {Object} AddonJSONsSource
+ * @property {'addonJSONs'} type
+ * @property {string[]} files
+ * 
+ * @typedef {Object} AddonGUIDsSource
+ * @property {'guids'} type
+ * @property {string[]} guids
+ * @property {string} language
+ * @property {?string} userAgent
+ */
 
-const preArgs = yargs()
-	.help(false)
-	.option('no-config', {
-		type: 'boolean',
-		alias: 'N',
-	})
-	.option('config', {
-		type: 'string',
-		alias: 'C',
-	})
-.parseSync(hideBin(process.argv));
-
-// console.log(yargs);
-let argsParser = yargs()
-	.scriptName('addonInjectorForFenix')
-	.strict()
-	// .wrap(yargs.terminalWidth())
-	.usage('Inject custom addon list into release version of Android Firefox')
-	.option('config', {
-		type: 'string',
-		alias: 'C',
-		default: preArgs.noConfig ? undefined : path.join(process.env['XDG_CONFIG_HOME'] || path.join(/** @type {string} */ (process.env['HOME']), '.config'), 'addonInjectorForFenix.config.json'),
-		defaultDescription: '$XDG_CONFIG_HOME/addonInjectorForFenix.config.json',
-		conflicts: (preArgs.config && preArgs.noConfig) ? ['no-config'] : undefined,
-	})
-	.option('no-config', {
-		type: 'boolean',
-		alias: 'N',
-		description: "Don't load any config file",
-	})
-	.option('collection', {
-		type: 'string',
-		alias: 'c',
-		description: "AMO user name/ID and collection name/ID to fetch, separated by '/'",
-		default: '16201230/What-I-want-on-Fenix',
-		defaultDescription: `"16201230/What-I-want-on-Fenix" (Iceraven's collection)`,
-		/** @param {string} collectionSpec */
-		coerce(collectionSpec) {
-			const result = collectionSpec.split('/');
-			if(result.length !== 2) {
-				throw new Error("AMO collection must be specified as '<user>/<collection>'");
-			}
-			return result;
-		},
-	})
-	.option('file', {
-		type: 'string',
-		alias: 'f',
-		description: 'Inject premade json file instead of fetching addon info',
-	})
-	.option('user-agent', {
-		type: 'string',
-		alias: 'U',
-		description: 'User-Agent to use when fetching addon data',
-		default: 'Firefox/109.0',
-	})
-	.option('no-list', {
-		type: 'boolean',
-		alias: 'n',
-		description: 'Start from an empty addon list (use -a to extend)',
-	})
-	.option('extra-addons', {
-		type: 'array',
-		alias: 'a',
-		description: `Addons to insert into list. Each can be an "Extension ID" from about:debugging, or an AMO URL to scrape. (ignored for --file)`,
-		coerce(extraAddons) {
-			return extraAddons.map(a => a.toString());
-		},
-	})
-	.option('language', {
-		type: 'string',
-		alias: 'l',
-		description: 'ISO language code, or empty string (ignored for --file)',
-		default: 'en-US',
-	})
-	.option('sort', {
-		choices: ['popularity', 'name', 'added'].flatMap(x => [x, '-'+x]),
-		alias: 'S',
-		description: 'Sort order (ignored for --file)',
-		default: '-popularity',
-	})
-	.option('device', {
-		type: 'string',
-		alias: 's',
-		description: 'Specify an Android device (passed to adb -s)',
-		defaultDescription: 'whatever adb defaults to',
-	})
-	.option('no-fwmark', {
-		type: 'boolean',
-		alias: ['F', 'samsung'],
-		description: 'Work around adb issues in Termux on Samsung',
-	})
-	.option('dump', {
-		type: 'boolean',
-		description: 'Dump generated JSON to stdout instead of injecting',
-	})
-	// .check(args => {
-	// 	if(args.collection && args.collection.split('/').length !== 2) {
-	// 		throw new Error("AMO collection must be specified as '<user>/<collection>");
-	// 	}
-	// })
+// const stdoutWriteAsync = promisify(process.stdout.write.bind(process.stdout));
+// const stderrWriteAsync = promisify(process.stderr.write.bind(process.stderr));
+const program = new Command();
+program
+	.name('addonInjectorForFenix')
+	.description('Inject custom addon list into release version of Android Firefox')
 ;
-if(!(preArgs.config && preArgs.noConfig)) {
-	argsParser = argsParser.config('config', configPath => {
-		try {
-			return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-		} catch(e) {
-			if(!preArgs.config && e.code === 'ENOENT') {
-				return {};
-			}
+program.command('build [file]')
+	.description('rebuild addon collection JSON if necessary')
+	.option('-f, --force', 'always rebuild')
+	.option('-c, --config <file>', 'path to config file')
+	.action(async (addonsJSONPath, options) => {
+		const {config, configPath} = loadConfig(options);
+		addonsJSONPath = findAddonsJSONPath(addonsJSONPath, config);
+		if(!isExpired(addonsJSONPath, config.maxAge)) {
+			// stderrWriteAsync(`Using cached file\n`);
+			console.warn('Using cached file');
+			return;
+		}
+		const addonCollectionPage = await build(config, configPath);
+		const addonsJSON = JSON.stringify(addonCollectionPage);
+		if(addonsJSONPath === '-') {
+			// await stdoutWriteAsync(addonsJSON);
+			fs.writeFileSync(1, addonsJSON, 'utf-8')
+		} else {
+			fs.writeFileSync(addonsJSONPath, addonsJSON, 'utf-8');
+		}
+	})
+;
+program.command('inject [file]')
+	.description('inject addon collection JSON into Android Firefox via ADB')
+	.option('-f, --force', 'always rebuild')
+	.option('-c, --config <file>', 'path to config file')
+	.option('-s, --device <serial>', 'Android device to target (passed through to adb -s)')
+	.option('-a, --app <bundleID>', 'bundle ID of Firefox-like app to target')
+	.action(async (addonsJSONPath, options) => {
+		const {config, configPath} = loadConfig(options);
+		addonsJSONPath = findAddonsJSONPath(addonsJSONPath, config);
+		let addonsJSON;
+		if(addonsJSONPath === '-') {
+			addonsJSON = fs.readFileSync(0, 'utf-8');
+		} else {
+			addonsJSON = fs.readFileSync(addonsJSONPath, 'utf-8');
+		}
+		await inject(addonsJSON, config, configPath, options);
+	})
+;
+program.command('build-and-inject')
+	.description('rebuild addon collection JSON if necessary, and immediately inject it')
+	.option('-f, --force', 'always rebuild')
+	.option('-c, --config <file>', 'path to config file')
+	.action(async (options) => {
+		const {config, configPath} = loadConfig(options);
+		const addonsJSONPath = findAddonsJSONPath(undefined, config);
+		let addonsJSON;
+		if(!isExpired(addonsJSONPath, config.maxAge)) {
+			console.warn('Using cached file');
+			addonsJSON = fs.readFileSync(addonsJSONPath, 'utf-8');
+		} else {
+			const addonCollectionPage = await build(config, configPath);
+			addonsJSON = JSON.stringify(addonCollectionPage);
+			fs.writeFileSync(addonsJSONPath, addonsJSON, 'utf-8');
+		}
+		await inject(addonsJSON, config, configPath, options);
+	})
+;
+
+await program.parseAsync();
+
+/**
+ * @param {string} addonsJSONPath
+ * @param {number} maxAge
+ */
+function isExpired(addonsJSONPath, maxAge) {
+	if(maxAge <= 0) {
+		return true;
+	}
+	// if(addonsJSONPath === '-') {
+	// 	return true;
+	// }
+	try {
+		const stats = fs.statSync(addonsJSONPath);
+		return +new Date() - +new Date(stats.mtime) > maxAge*1000;
+	} catch(e) {
+		if(e.code === 'ENOENT') {
+			return true;
+		} else {
 			throw e;
 		}
-	});
-}
-const args = argsParser.parseSync(hideBin(process.argv));
-const adb = [
-	...args.noFwmark ? ['env', 'ANDROID_NO_USE_FWMARK_CLIENT=1', 'fakeroot'] : [],
-	'adb',
-	...args.device ? ['-s', args.device] : [],
-];
-const [adbCmd, ...adbArgs] = adb;
-console.log(args);
-// process.exit();
-console.log(adbCmd, adbArgs);
-
-const {userAgent} = args;
-
-let addonData;
-if(args.file) {
-	addonData = fs.readFileSync(args.file, 'utf-8');
-	JSON.parse(addonData); // validate
-} else {
-	if(args.noList) {
-		addonData = {
-			page_size: 50,
-			page_count: 1,
-			count: 0,
-			next: null,
-			previous: null,
-			results: [],
-		};
-	} else {
-		let [user, collection] = args.collection;
-		const firstPageParams = new URLSearchParams();
-		firstPageParams.set('page_size', '50');
-		firstPageParams.set('sort', args.sort);
-		if(args.language) {
-			firstPageParams.set('lang', args.language);
-		}
-		let nextPageURL = `https://services.addons.mozilla.org/api/v4/accounts/account/${encodeURIComponent(user)}/collections/${encodeURIComponent(collection)}/addons/?${firstPageParams}`;
-		const resultLists = [];
-		while(nextPageURL) {
-			console.log(nextPageURL);
-			const response = await fetch(nextPageURL, {
-				headers: {
-					'User-Agent': userAgent,
-				},
-			});
-			const responseData = await response.json();
-			nextPageURL = responseData.next;
-			resultLists.push(responseData.results);
-		}
-		const results = resultLists.flat();
-		addonData = {
-			page_size: results.length,
-			page_count: 1,
-			count: results.length,
-			next: null,
-			previous: null,
-			results,
-		};
 	}
-	if(args.extraAddons?.length) {
-		const ids = [], urls = [];
-		for(const addonSpec of args.extraAddons) {
-			(addonSpec.startsWith('https://addons.mozilla.org/') ? urls : ids).push(addonSpec);
+}
+
+/**
+ * 
+ * @param {string | undefined} fromCommandLine 
+ * @param {Config} config 
+ */
+function findAddonsJSONPath(fromCommandLine, config) {
+	let addonsJSONPath = fromCommandLine;
+	if(!addonsJSONPath) {
+		addonsJSONPath = config.outputPath;
+		if(!addonsJSONPath) {
+			addonsJSONPath = path.join(
+				process.env['XDG_CACHE_HOME'] || path.join(
+					/** @type {string} */ (process.env['HOME']),
+					'.cache'
+				),
+				'addonInjectorForFenix',
+				'addons.json',
+			);
+			fs.mkdirSync(path.dirname(addonsJSONPath), {recursive: true});
 		}
-		const oldResults = addonData.results;
-		let results;
-		if(ids.length) {
-			const firstPageParams = new URLSearchParams();
-			firstPageParams.set('page_size', '50');
-			if(args.language) {
-				firstPageParams.set('lang', args.language);
-			}
-			firstPageParams.set('guid', ids.join(','));
-			let nextPageURL = `https://services.addons.mozilla.org/api/v4/addons/search/?${firstPageParams}`;
-			const resultLists = [];
-			while(nextPageURL) {
-				console.log(nextPageURL);
-				const response = await fetch(nextPageURL, {
-					headers: {
-						'User-Agent': userAgent,
-					},
-				});
-				const responseData = await response.json();
-				// console.log(responseData);
-				nextPageURL = responseData.next;
-				resultLists.push(responseData.results.map(addon => ({addon, notes: null})));
-			}
-			results = resultLists.flat();
+	}
+	return addonsJSONPath;
+}
+
+
+function loadConfig(options) {
+	let configPath = /** @type {string|undefined} */(options.config);
+	let explicitConfig = true;
+	if(!configPath) {
+		explicitConfig = false;
+		configPath = path.join(
+			process.env['XDG_CONFIG_HOME'] || path.join(
+				/** @type {string} */ (process.env['HOME']),
+				'.config'
+			),
+			'addonInjectorForFenix',
+			'config.toml',
+		);
+	}
+	
+	const defaults = /** @type {Config} */(toml.parse(`
+		useSources = ['iceraven']
+		maxFetches = 10
+		noFwmark = 'auto'
+		app = 'org.mozilla.firefox'
+		maxAge = ${24*60*60}
+		
+		[sources._default]
+		sort = '-popularity'
+		language = 'en-US'
+		# userAgent = 'Firefox/109.0'
+		
+		[sources.iceraven]
+		type = 'addonCollection'
+		user = '16201230'
+		collection = 'What-I-want-on-Fenix'
+		
+		[sources.mozilla]
+		type = 'addonCollection'
+		user = 'mozilla'
+		collection = '7dfae8669acc4312a65e8ba5553036'
+	`, {bigint: false}));
+	let configDirect;
+	try {
+		configDirect = /** @type {Partial<Config>} */(toml.parse(fs.readFileSync(configPath, 'utf-8'), {bigint: false}));
+	} catch(e) {
+		if(!explicitConfig && e.code === 'ENOENT') {
+			return {config: defaults};
 		} else {
-			results = [];
+			throw e;
 		}
-		for(const addonURL of urls) {
-			console.log(addonURL);
-			const response = await fetch(addonURL, {
-				headers: {
-					'User-Agent': userAgent,
-				},
-			});
-			const responseData = await response.text();
-			const $ = cheerio.load(responseData);
-			const reduxState = JSON.parse($('#redux-store-state').text());
-			// console.log(reduxState.addons.byID);
-			// results.push(...Object.values(reduxState.addons.byID));
-			for(const addon of Object.values(reduxState.addons.byID)) {
-				if(!('current_version' in addon)) {
-					addon.current_version = reduxState.versions.byId[addon.currentVersionId];
-					delete addon.currentVersionId;
-				}
-				if(!('files' in addon.current_version)) {
-					addon.current_version.files = [addon.current_version.file];
-					delete addon.current_version.file;
-				}
-				results.push({
-					addon,
-					notes: null,
-				});
+	}
+	/** @type {Config} */
+	const config = ({
+		...defaults,
+		...configDirect,
+		sources: {
+			...defaults.sources,
+			...configDirect.sources,
+			_default: {
+				...defaults.sources._default,
+				...configDirect.sources?._default,
 			}
+		},
+	});
+	if(options.force) {
+		config.maxAge = -1;
+	}
+	return {config, configPath};
+}
+
+/**
+ * @param {Config} config
+ * @param {string|undefined} configPath
+ * @returns {Promise<AddonCollectionPage>}
+ */
+async function build(config, configPath) {
+	console.warn('Rebuilding addons JSON');
+	let fetchesLeft = config.maxFetches;
+	function checkFetch() {
+		if(fetchesLeft < 0) {
+			return;
 		}
-		results = results.concat(oldResults);
-		/*
-		const [, sortMinus, sortType] = /** @type {RegExpExecArray} *\/ (/^(-?)(\w+)$/.exec(args.sort));
-		results = orderBy(results, [{
-			name: ({addon}) => addon.name.toLowerCase(), // NOTE: probably not quite the same as what Mozilla is doing - Unicode weirdness etc.
-			added: ({addon}) => new Date(addon.created),
-			popularity: ({addon}) => addon.weekly_downloads,
-		}[sortType]], [sortMinus ? 'desc' : 'asc']);
-		*/
-		addonData = {
-			page_size: results.length,
-			page_count: 1,
-			count: results.length,
-			next: null,
-			previous: null,
-			results,
-		};
+		if(fetchesLeft-- <= 0) {
+			throw new Error(`Too many fetches required, aborting (maxFetches = ${config.maxFetches})`);
+		}
 	}
-	addonData = JSON.stringify(addonData);
-}
-if(args.dump) {
-	await new Promise(resolve => process.stdout.write(addonData, resolve));
-	process.exit();
-}
-// process.exit();
-
-// Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
-const oldCreateConnection = net.createConnection;
-net.createConnection = function(...args) {
-	if(args[0]?.port === -99999) {
-		args[0] = {path: args[0].host};
-	}
-	return oldCreateConnection.call(this, ...args);
-};
-
-const myTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'addonInjectorForFenix-'));
-const mySocket = path.join(myTmpDir, 'adb.sock');
-
-child_process.spawnSync(adbCmd, [...adbArgs, 'forward', `localfilesystem:${mySocket}`, 'localabstract:org.mozilla.firefox/firefox-debugger-socket'], {stdio: 'inherit'});
-
-try {
-	const {browser, tabs} = await Foxdriver.attach(mySocket, -99999);
-	const {client} = browser;
-	const {processDescriptor} = await browser.request('getProcess', {id: 0});
-	const procDescActor = new Actor(client, processDescriptor.actor);
-	const procTargetMsg = await procDescActor.request('getTarget');
-	const procTargetActor = new Actor(client, procTargetMsg.process.actor, procTargetMsg.process);
-	const procConsole = procTargetActor._get('console');
-	console.log(await procConsole.evaluateJSAsync(function(addonData) {
-		/// <reference path="./mozilla.d.ts" />
-		JSON.parse(addonData);
-		const dummyScope = {};
-		// const {NetUtil} = Cu.import("resource://gre/modules/NetUtil.jsm", dummyScope);
-		const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm", dummyScope);
-		const filesDir = new FileUtils.File(`/data/data/org.mozilla.firefox/files`);
-		const re = /^mozilla_components_addon_collection_.*\.json$/;
-		let file;
-		// const fileNames = [];
-		for(const testFile of filesDir.directoryEntries) {
-			if(re.test(testFile.leafName)) {
-				// if(!file) {
-					file = testFile;
-				// }
-				// fileNames.push(file.leafName);
+	/** @type {AddonCollectionEntry[]} */
+	let addonEntries = [];
+	const defaultSource = config.sources._default;
+	
+	for(const sourceName of config.useSources) {
+		const source = {...defaultSource, ...config.sources[sourceName]};
+		// console.log({source}); process.exit();
+		if(!source) {
+			throw new Error(`No such source: ${sourceName}`);
+		}
+		// console.log(sourceName, source);
+		switch(source.type) {
+			case 'addonCollection': {
+				const {sort, language, userAgent, user, collection} = source;
+				const firstPageParams = new URLSearchParams();
+				firstPageParams.set('page_size', '50');
+				firstPageParams.set('sort', sort);
+				if(language) {
+					firstPageParams.set('lang', language);
+				}
+				let nextPageURL = `https://services.addons.mozilla.org/api/v4/accounts/account/${encodeURIComponent(user)}/collections/${encodeURIComponent(collection)}/addons/?${firstPageParams}`;
+				const resultLists = [];
+				while(nextPageURL) {
+					// console.log(nextPageURL);
+					checkFetch();
+					const response = await fetch(nextPageURL, userAgent ? {
+						headers: {
+							'User-Agent': userAgent,
+						},
+					} : undefined);
+					const responseData = await response.json();
+					nextPageURL = responseData.next;
+					resultLists.push(responseData.results);
+				}
+				addonEntries = addonEntries.concat(...resultLists);
 				break;
 			}
-		}
-		if(!file) {
-			return 'No existing cache file';
-		}
-		// file = new FileUtils.File(`/storage/emulated/0/Download/test-2023-01-21.txt`);
-		const oldFile = (({fileSize, permissions}) => ({fileSize, permissions}))(file);
-		const ostream = FileUtils.openAtomicFileOutputStream(file);
-		try {
-			const encodedArray = new TextEncoder().encode(addonData);
-			// You'd think I could just do:
-			// 	const encoded = new TextDecoder('latin1').decode(encodedArray);
-			// but 'latin1' is _actually_ Windows-1252, for the usual 'broken IE compatibility nonsense' reasons,
-			// and they haven't added _real_ ISO-8859-1. So I have to do it the hard way, and work around
-			// argument list length limits.
-			let encoded = '';
-			const chunkSize = 102400;
-			for(let i = 0; i < encodedArray.length; i += chunkSize) {
-				encoded += String.fromCharCode.apply(null, encodedArray.slice(i, i+chunkSize));
+			case 'addonJSONs': {
+				const dir = path.dirname(configPath || '.');
+				for(const filePath of source.files) {
+					const resolvedFilePath = path.resolve(dir, filePath);
+					addonEntries.push({
+						addon: JSON.parse(fs.readFileSync(resolvedFilePath, 'utf-8')),
+						notes: null,
+					});
+				}
+				break;
 			}
-			ostream.write(encoded, encoded.length);
-			ostream.flush();
-		} finally {
-			FileUtils.closeAtomicFileOutputStream(ostream);
+			case 'guids': {
+				const {language, userAgent, guids} = source;
+				const firstPageParams = new URLSearchParams();
+				firstPageParams.set('page_size', '50');
+				if(language) {
+					firstPageParams.set('lang', language);
+				}
+				firstPageParams.set('guid', guids.join(','));
+				let nextPageURL = `https://services.addons.mozilla.org/api/v4/addons/search/?${firstPageParams}`;
+				// console.log(nextPageURL); process.exit();
+				const resultLists = [];
+				while(nextPageURL) {
+					// console.log(nextPageURL);
+					checkFetch();
+					const response = await fetch(nextPageURL, userAgent ? {
+						headers: {
+							'User-Agent': userAgent,
+						},
+					} : undefined);
+					const responseData = await response.json();
+					nextPageURL = responseData.next;
+					resultLists.push(responseData.results);
+				}
+				addonEntries = addonEntries.concat(resultLists.flat().map(addon => ({addon, notes: null})));
+				break;
+			}
+			default:
+				throw new Error(`Unknown addon source type: ${/** @type {any} */(source).type}`);
+				break;
 		}
-		file = new FileUtils.File(file.path);
-		// Not quite 100 years, because leap years, but long enough:
-		file.lastModifiedTime += 100*365*24*60*60*1000;
-		return `${oldFile.permissions.toString(8)} -> ${file.permissions.toString(8)}\n${oldFile.fileSize} -> ${file.fileSize}\nWrote to ${file.path}`;
-	}, addonData));
-} finally {
-	child_process.spawnSync(adbCmd, [...adbArgs, 'forward', '--remove', `localfilesystem:${mySocket}`], {stdio: 'inherit'});
-	fs.unlinkSync(mySocket);
-	fs.rmdirSync(myTmpDir);
+	}
+	if(config.moveToTop) {
+		const moveToTopGUIDs = config.moveToTop.flatMap(guidOrSourceName => {
+			if(guidOrSourceName in config.sources) {
+				const source = config.sources[guidOrSourceName];
+				if(source.type !== 'guids') {
+					throw new Error(`No GUID list for ${guidOrSourceName}`);
+				}
+				return source.guids;
+			} else {
+				return guidOrSourceName;
+			}
+		})
+		const moveToTopGUIDSet = new Set(moveToTopGUIDs);
+		/** @type {Record<string, AddonCollectionEntry>} */
+		const moveToTopAddonsByGUID = Object.create(null);
+		addonEntries = addonEntries.filter(addonEntry => {
+			const {guid} = addonEntry.addon
+			if(moveToTopGUIDSet.has(guid)) {
+				moveToTopAddonsByGUID[guid] = addonEntry;
+				return false;
+			} else {
+				return true;
+			}
+		});
+		addonEntries = moveToTopGUIDs.map(guid => {
+			const addon = moveToTopAddonsByGUID[guid];
+			if(!addon) {
+				throw new Error(`Addon with GUID ${guid} missing`);
+			}
+			return addon;
+		}).concat(addonEntries);
+	}
+	return {
+		page_size: addonEntries.length,
+		page_count: 1,
+		count: addonEntries.length,
+		prev: null,
+		next: null,
+		results: addonEntries,
+	}
+};
+/**
+ * @param {string} addonsJSON
+ * @param {Config} config 
+ * @param {string | undefined} configPath 
+ * @param {*} options 
+ */
+async function inject(addonsJSON, config, configPath, options) {
+	console.warn('Injecting');
+	const deviceID = options.device || config.device;
+	JSON.parse(addonsJSON); // validate
+	const net = await (await import('net')).default;
+	// Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
+	const oldCreateConnection = net.createConnection;
+	net.createConnection = function(...args) {
+		if(args[0]?.port === -99999) {
+			args[0] = {path: args[0].host};
+		}
+		return oldCreateConnection.call(this, ...args);
+	};
+	const Foxdriver = (await import('foxdriver')).default;
+	const Actor = (await import('foxdriver/build/actor.js')).default;
+	
+	const noFwmark = 'noFwmark' in options ? options.noFwmark : config.noFwmark;
+	const device = 'device' in options ? options.device : config.device;
+	const app = 'app' in options ? options.app : config.app;
+	
+	await withTempDir(async myTmpDir => {
+		await withADBSocketForwarded(noFwmark, device, app, myTmpDir, async socketPath => {
+			const {browser, tabs} = await Foxdriver.attach(socketPath, -99999);
+			const {client} = browser;
+			try {
+				const {processDescriptor} = await browser.request('getProcess', {id: 0});
+				const procDescActor = new Actor(client, processDescriptor.actor);
+				const procTargetMsg = await procDescActor.request('getTarget');
+				const procTargetActor = new Actor(client, procTargetMsg.process.actor, procTargetMsg.process);
+				const procConsole = procTargetActor._get('console');
+				const resultFromFirefox = await procConsole.evaluateJSAsync(function(addonsJSON, app) {
+					/// <reference path="./mozilla.d.ts" />
+					if(typeof Cu === 'undefined') {
+						throw new Error('Cu not defined - restart Firefox with a tab open and try again');
+					}
+					const dummyScope = {};
+					const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm", dummyScope);
+					const filesDir = new FileUtils.File(`/data/data/${app}/files`);
+					const re = /^mozilla_components_addon_collection_.*\.json$/;
+					let file;
+					for(const testFile of filesDir.directoryEntries) {
+						if(re.test(testFile.leafName)) {
+							file = testFile;
+							break;
+						}
+					}
+					if(!file) {
+						throw new Error('No existing cache file');
+					}
+					const oldFile = (({fileSize, permissions}) => ({fileSize, permissions}))(file);
+					const ostream = FileUtils.openAtomicFileOutputStream(file);
+					try {
+						const encodedArray = new TextEncoder().encode(addonsJSON);
+						// The stream I/O APIs in Firefox want the data as a JavaScript string containing bytes.
+						// Converting a byte array to that format basically means 'decoding' it as ISO-8859-1.
+						// You'd think I could just do:
+						// 	const encoded = new TextDecoder('latin1').decode(encodedArray);
+						// but 'latin1' is _actually_ Windows-1252, for the usual 'broken IE compatibility nonsense' reasons,
+						// and they haven't added _real_ ISO-8859-1. So I have to do it the hard way, and work around
+						// argument list length limits.
+						let encoded = '';
+						const chunkSize = 102400;
+						for(let i = 0; i < encodedArray.length; i += chunkSize) {
+							encoded += String.fromCharCode.apply(null, encodedArray.slice(i, i+chunkSize));
+						}
+						ostream.write(encoded, encoded.length);
+						ostream.flush();
+					} finally {
+						FileUtils.closeAtomicFileOutputStream(ostream);
+					}
+					file = new FileUtils.File(file.path);
+					// Not quite 100 years, because leap years, but long enough:
+					file.lastModifiedTime += 100*365*24*60*60*1000;
+					return `${oldFile.permissions.toString(8)} -> ${file.permissions.toString(8)}\n${oldFile.fileSize} -> ${file.fileSize}\nWrote to ${file.path}`;
+				}, addonsJSON, app);
+				console.warn(resultFromFirefox);
+			} finally {
+				client.disconnect();
+			}
+		});
+	});
+};
+
+/**
+ * @template {array} A
+ * @template R
+ * @param {(myTmpDir: string, ...A) => (R|Promise<R>)} fn 
+ * @param {A} args
+ * @returns R
+ */
+async function withTempDir(fn, ...args) {
+	const myTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'addonInjectorForFenix-'));
+	let result;
+	try {
+		result = await fn(myTmpDir, ...args);
+	} finally {
+		fs.rmSync(myTmpDir, {recursive: true});
+	}
+	return result;
 }
-process.exit();
+
+/**
+ * @template {array} A
+ * @template R
+ * @param {Config['noFwmark']} noFwmark
+ * @param {Config['device']} device
+ * @param {Config['app']} app
+ * @param {string} myTmpDir
+ * @param {(socketPath: string, ...A) => (R|Promise<R>)} fn 
+ * @param {A} args
+ * @returns R
+ */
+async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...args) {
+	if(noFwmark === 'auto') {
+		noFwmark = false;
+		if(os.platform() === 'android') {
+			let getpropResult;
+			try {
+				getpropResult = await promisify(child_process.exec)('getprop ro.product.manufacturer');
+			} catch(e) {}
+			if(getpropResult && getpropResult?.stdout.trim() === 'samsung') {
+				noFwmark = true;
+			}
+		}
+	}
+	const adb = [
+		...noFwmark ? ['env', 'ANDROID_NO_USE_FWMARK_CLIENT=1', 'fakeroot'] : [],
+		'adb',
+		...device ? ['-s', device] : [],
+	];
+	const [adbCmd, ...adbArgs] = adb;
+	const socketPath = path.join(myTmpDir, 'firefox.sock');
+	const local = `localfilesystem:${socketPath}`;
+	const remote = `localabstract:${app}/firefox-debugger-socket`;
+	const adbResult = child_process.spawnSync(adbCmd, [...adbArgs, 'forward', local, remote], {stdio: 'inherit'});
+	if(adbResult.error) {
+		throw adbResult.error;
+	} else if(adbResult.status) {
+		throw new Error('adb forward command exited with status ${result.status}');
+	}
+	let result;
+	try {
+		result = fn(socketPath, ...args);
+	} finally {
+		const adbResult = child_process.spawnSync(adbCmd, [...adbArgs, 'forward', '--remove', local], {stdio: 'inherit'});
+		if(adbResult.error) {
+			throw adbResult.error;
+		} else if(adbResult.status) {
+			throw new Error('adb un-forward command exited with status ${result.status}');
+		}
+	}
+	return result;
+}
