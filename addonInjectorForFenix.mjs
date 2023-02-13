@@ -527,7 +527,7 @@ async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...ar
 	if(adbResult.error) {
 		throw adbResult.error;
 	} else if(adbResult.status) {
-		throw new Error('adb forward command exited with status ${result.status}');
+		throw new Error(`adb forward command exited with status ${adbResult.status}`);
 	}
 	let result;
 	try {
@@ -537,7 +537,7 @@ async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...ar
 		if(adbResult.error) {
 			throw adbResult.error;
 		} else if(adbResult.status) {
-			throw new Error('adb un-forward command exited with status ${result.status}');
+			throw new Error(`adb un-forward command exited with status ${adbResult.status}`);
 		}
 	}
 	return result;
