@@ -109,7 +109,7 @@ program.command('inject [file]')
 		await inject(addonsJSON, config, configPath, options);
 	})
 ;
-program.command('build-and-inject')
+program.command('build-and-inject', {isDefault: true})
 	.description('rebuild addon collection JSON if necessary, and immediately inject it')
 	.option('-f, --force', 'always rebuild')
 	.option('-c, --config <file>', 'path to config file')
