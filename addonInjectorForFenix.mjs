@@ -94,7 +94,6 @@ program.command('build [file]')
 ;
 program.command('inject [file]')
 	.description('inject addon collection JSON into Android Firefox via ADB')
-	.option('-f, --force', 'always rebuild')
 	.option('-c, --config <file>', 'path to config file')
 	.option('-s, --device <serial>', 'Android device to target (passed through to adb -s)')
 	.option('-a, --app <bundleID>', 'bundle ID of Firefox-like app to target')
@@ -114,6 +113,8 @@ program.command('build-and-inject')
 	.description('rebuild addon collection JSON if necessary, and immediately inject it')
 	.option('-f, --force', 'always rebuild')
 	.option('-c, --config <file>', 'path to config file')
+	.option('-s, --device <serial>', 'Android device to target (passed through to adb -s)')
+	.option('-a, --app <bundleID>', 'bundle ID of Firefox-like app to target')
 	.action(async (options) => {
 		const {config, configPath} = loadConfig(options);
 		const addonsJSONPath = findAddonsJSONPath(undefined, config);
