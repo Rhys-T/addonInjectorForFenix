@@ -97,7 +97,7 @@ program.command('build [file]')
 	.action(async (addonsJSONPath, options) => {
 		const {config, configPath} = loadConfig(options);
 		addonsJSONPath = findAddonsJSONPath(addonsJSONPath, config);
-		if(!isExpired(addonsJSONPath, config.maxAge)) {
+		if(!isExpired(addonsJSONPath, config, configPath)) {
 			// stderrWriteAsync(`Using cached file\n`);
 			console.warn('Using cached file');
 			return;
@@ -139,7 +139,7 @@ program.command('build-and-inject', {isDefault: true})
 		const {config, configPath} = loadConfig(options);
 		const addonsJSONPath = findAddonsJSONPath(undefined, config);
 		let addonsJSON;
-		if(!isExpired(addonsJSONPath, config.maxAge)) {
+		if(!isExpired(addonsJSONPath, config, configPath)) {
 			console.warn('Using cached file');
 			addonsJSON = fs.readFileSync(addonsJSONPath, 'utf-8');
 		} else {
@@ -155,9 +155,11 @@ await program.parseAsync();
 
 /**
  * @param {string} addonsJSONPath
- * @param {number} maxAge
+ * @param {Config} config
+ * @param {string | undefined} configPath
  */
-function isExpired(addonsJSONPath, maxAge) {
+function isExpired(addonsJSONPath, config, configPath) {
+	const {maxAge} = config;
 	if(maxAge <= 0) {
 		return true;
 	}
@@ -166,7 +168,24 @@ function isExpired(addonsJSONPath, maxAge) {
 	// }
 	try {
 		const stats = fs.statSync(addonsJSONPath);
-		return +new Date() - +new Date(stats.mtime) > maxAge*1000;
+		if(configPath) {
+			const configStats = fs.statSync(configPath);
+			if(configStats.mtimeMs > stats.mtimeMs) {
+				return true;
+			}
+		}
+		for(const sourceName of config.useSources) {
+			const source = config.sources[sourceName];
+			if(source.type === 'addonJSONs') {
+				for(const addonJSONFile of source.files) {
+					const jsonStats = fs.statSync(addonJSONFile);
+					if(jsonStats.mtimeMs > stats.mtimeMs) {
+						return true;
+					}
+				}
+			}
+		}
+		return +new Date() - +new Date(stats.mtimeMs) > maxAge*1000;
 	} catch(e) {
 		if(e.code === 'ENOENT') {
 			return true;
