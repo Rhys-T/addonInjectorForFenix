@@ -628,7 +628,7 @@ async function inject(addonsJSON, config, configPath, options) {
  * @template R
  * @param {(myTmpDir: string, ...A) => (R|Promise<R>)} fn 
  * @param {A} args
- * @returns R
+ * @returns {Promise<R>}
  */
 async function withTempDir(fn, ...args) {
 	const myTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'addonInjectorForFenix-'));
@@ -650,7 +650,7 @@ async function withTempDir(fn, ...args) {
  * @param {string} myTmpDir
  * @param {(socketPath: string, ...A) => (R|Promise<R>)} fn 
  * @param {A} args
- * @returns R
+ * @returns {Promise<R>}
  */
 async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...args) {
 	if(noFwmark === 'auto') {
