@@ -392,44 +392,6 @@ async function build(config, configPath) {
 						}),
 						notes: null,
 					});
-					// if('updateURL' in addonInfo) {
-					// 	if(!addonUpdateManifests) {
-					// 		addonUpdateManifests = new Map();
-					// 	}
-					// 	const {updateURL} = addonInfo;
-					// 	let updateManifest = addonUpdateManifests.get(updateURL);
-					// 	if(!updateManifest) {
-					// 		checkFetch();
-					// 		const response = await fetch(updateURL, userAgent ? {
-					// 			headers: {
-					// 				'User-Agent': userAgent,
-					// 			},
-					// 		} : undefined);
-					// 		updateManifest = /** @type {AddonUpdateManifest} */(await response.json());
-					// 		addonUpdateManifests.set(updateURL, updateManifest);
-					// 	}
-					// 	let myUpdates = updateManifest.addons[guid].updates;
-					// 	myUpdates.sort((a, b) => {
-					// 		const aVersion = `${a.version}.0.0.0`.split(/\./g).map(x => +x);
-					// 		const bVersion = `${b.version}.0.0.0`.split(/\./g).map(x => +x);
-					// 		return (
-					// 			(b[3] - a[3]) ||
-					// 			(b[2] - a[2]) ||
-					// 			(b[1] - a[1]) ||
-					// 			(b[0] - a[0])
-					// 		);
-					// 	});
-					// 	const newest = myUpdates[0];
-					// 	addonEntries.push(/** @type {AddonCollectionEntry} */({
-					// 		addon: {
-					// 			guid,
-					// 			name,
-					// 		},
-					// 		notes: null,
-					// 	}))
-					// } else {
-					// 	throw new Error('TODO');
-					// }
 				}
 				break;
 			}
