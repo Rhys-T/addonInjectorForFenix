@@ -41,6 +41,7 @@ import { Command } from 'commander';
  * @property {string} app
  * @property {string|undefined} outputPath
  * @property {number} maxAge
+ * @property {boolean} fixupAddonData
  * @property {Record<string, Source> & {_default: Source}} sources
  * 
  * @typedef {AddonCollectionSource | AddonJSONsSource | AddonGUIDsSource | AddonURLsSource} Source
@@ -221,6 +222,7 @@ function loadConfig(options) {
 		noFwmark = 'auto'
 		app = 'org.mozilla.firefox'
 		maxAge = ${24*60*60}
+		fixupAddonData = true
 		
 		[sources._default]
 		sort = '-popularity'
@@ -463,6 +465,21 @@ async function inject(addonsJSON, config, configPath, options) {
 		}
 		return oldCreateConnection.call(this, ...args);
 	};
+	// Patch Foxdriver's evaluateJSAsync to simulate top-level await when passing an async function
+	const {addHook} = await import('pirates');
+	addHook((code, filename) => code.replace(
+		/^class Console\b/m,
+		`const AsyncFunction = (async x=>0).constructor;\n$&`,
+	).replace(
+		`async evaluateJSAsync(script, ...args) {`,
+		`$& const origScript = script;`,
+	).replace(
+		`await this.request('evaluateJSAsync', {`,
+		`await this.request('evaluateJSAsync', {mapped: (origScript instanceof AsyncFunction) ? {await: true} : undefined, `
+	), {
+		ignoreNodeModules: false,
+		matcher: path => /\bfoxdriver\/build\/domains\/console\.js$/.test(path),
+	});
 	const Foxdriver = (await import('foxdriver')).default;
 	const Actor = (await import('foxdriver/build/actor.js')).default;
 	
@@ -480,12 +497,66 @@ async function inject(addonsJSON, config, configPath, options) {
 				const procTargetMsg = await procDescActor.request('getTarget');
 				const procTargetActor = new Actor(client, procTargetMsg.process.actor, procTargetMsg.process);
 				const procConsole = procTargetActor._get('console');
-				const resultFromFirefox = await procConsole.evaluateJSAsync(function(addonsJSON, app) {
+				const resultFromFirefox = await procConsole.evaluateJSAsync(async function(addonsJSON, app, shouldFixupAddonData) {
 					/// <reference path="./mozilla.d.ts" />
 					if(typeof Cu === 'undefined') {
 						throw new Error('Cu not defined - restart Firefox with a tab open and try again');
 					}
 					const dummyScope = {};
+					
+					if(shouldFixupAddonData) {
+						/** @type {AddonCollectionPage} */
+						const addonList = JSON.parse(addonsJSON);
+						/** @type {?Map<string, object>} */
+						let allXPIAddonsByID = null;
+						for(const addonEntry of addonList.results) {
+							/** @type {any} */
+							const {addon} = addonEntry;
+							if(addon.summary === '[injected]') {
+								if(!allXPIAddonsByID) {
+									const {XPIDatabase} = Cu.import('resource://gre/modules/addons/XPIDatabase.jsm', dummyScope);
+									const allXPIAddons = XPIDatabase.getAddons();
+									allXPIAddonsByID = new Map(allXPIAddons.map(xpiAddon => [xpiAddon.id, xpiAddon]));
+								}
+								const xpiAddon = allXPIAddonsByID.get(addon.guid);
+								if(xpiAddon) {
+									if(xpiAddon.selectedLocale?.name) {
+										addon.name = xpiAddon.selectedLocale.name;
+									}
+									if(xpiAddon.selectedLocale?.description) {
+										addon.summary = xpiAddon.selectedLocale.description;
+									}
+									if(xpiAddon.userPermissions) {
+										addon.current_version.files[0].permissions = [...xpiAddon.userPermissions.permissions || [], ...xpiAddon.userPermissions.origins || []];
+									}
+									if(xpiAddon.icons) {
+										let biggestIcon = null;
+										for(const [size, path] of Object.entries(xpiAddon.icons)) {
+											biggestIcon = path;
+										}
+										if(biggestIcon) {
+											const iconURL = new URL(biggestIcon, xpiAddon.rootURI).toString();
+											if(!iconURL.endsWith('.svg')) {
+												const response = await fetch(iconURL);
+												const iconBlob = await response.blob();
+												const iconDataURL = await new Promise((resolve, reject) => {
+													const fr = new FileReader();
+													fr.addEventListener('loadend', () => resolve(fr.result));
+													fr.addEventListener('error', reject);
+													fr.readAsDataURL(iconBlob);
+												})
+												addon.icon_url = iconDataURL;
+											} else {
+												// TODO render SVG with canvas?
+											}
+										}
+									}
+								}
+							}
+						}
+						addonsJSON = JSON.stringify(addonList);
+					}
+					
 					const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm", dummyScope);
 					const filesDir = new FileUtils.File(`/data/data/${app}/files`);
 					const re = /^mozilla_components_addon_collection_.*\.json$/;
@@ -524,7 +595,7 @@ async function inject(addonsJSON, config, configPath, options) {
 					// Not quite 100 years, because leap years, but long enough:
 					file.lastModifiedTime += 100*365*24*60*60*1000;
 					return `${oldFile.permissions.toString(8)} -> ${file.permissions.toString(8)}\n${oldFile.fileSize} -> ${file.fileSize}\nWrote to ${file.path}`;
-				}, addonsJSON, app);
+				}, addonsJSON, app, config.fixupAddonData);
 				console.warn(resultFromFirefox);
 			} finally {
 				client.disconnect();
