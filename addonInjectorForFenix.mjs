@@ -11,6 +11,7 @@ import path from 'path';
 import os from 'os';
 import child_process from 'child_process';
 import fs from 'fs';
+import url from 'url';
 // import fsp from 'fs/promises';
 import toml from '@ltd/j-toml';
 import { Command } from 'commander';
@@ -42,7 +43,7 @@ import { Command } from 'commander';
  * @property {number} maxAge
  * @property {Record<string, Source> & {_default: Source}} sources
  * 
- * @typedef {AddonCollectionSource | AddonJSONsSource | AddonGUIDsSource} Source
+ * @typedef {AddonCollectionSource | AddonJSONsSource | AddonGUIDsSource | AddonURLsSource} Source
  * 
  * @typedef {Object} AddonCollectionSource
  * @property {'addonCollection'} type
@@ -56,11 +57,29 @@ import { Command } from 'commander';
  * @property {'addonJSONs'} type
  * @property {string[]} files
  * 
+ * @typedef {Object} AddonURLsSource
+ * @property {'addonURLs'} type
+ * @property {AddonURLEntry[]} addons
+ * 
+ * @typedef {Object} AddonURLEntry
+ * @property {string} guid
+ * @property {string} name
+ * @property {string} xpiURL
+ * 
  * @typedef {Object} AddonGUIDsSource
  * @property {'guids'} type
  * @property {string[]} guids
  * @property {string} language
  * @property {?string} userAgent
+ * 
+ * @typedef {Object} AddonUpdateManifest
+ * @property {Record<string, AddonUpdateManifestAddon>} addons
+ * 
+ * @typedef {Object} AddonUpdateManifestAddon
+ * @property {AddonUpdateManifestAddonUpdate[]} updates
+ * 
+ * @typedef {Object} AddonUpdateManifestAddonUpdate
+ * @property {string} version
  */
 
 // const stdoutWriteAsync = promisify(process.stdout.write.bind(process.stdout));
@@ -267,6 +286,12 @@ async function build(config, configPath) {
 	let addonEntries = [];
 	const defaultSource = config.sources._default;
 	
+	/** @type {?Map<string, AddonUpdateManifest>} */
+	let addonUpdateManifests = null;
+	
+	/** @type {?string} */
+	let genericAddonIconURL = null;
+	
 	for(const sourceName of config.useSources) {
 		const source = {...defaultSource, ...config.sources[sourceName]};
 		// console.log({source}); process.exit();
@@ -337,6 +362,77 @@ async function build(config, configPath) {
 				addonEntries = addonEntries.concat(resultLists.flat().map(addon => ({addon, notes: null})));
 				break;
 			}
+			case 'addonURLs': {
+				const {addons} = source;
+				for(const addonInfo of addons) {
+					const {guid, name, xpiURL} = addonInfo;
+					if(!genericAddonIconURL) {
+						const imageData = fs.readFileSync(url.fileURLToPath(new URL('./extensionGeneric.png', import.meta.url)));
+						genericAddonIconURL = 'data:image/png;base64,' + imageData.toString('base64');
+					}
+					addonEntries.push({
+						addon: /** @type {Addon} */({
+							guid,
+							authors: [],
+							categories: {android: []},
+							created: "1970-01-01T00:00:00Z",
+							last_updated: "1970-01-01T00:00:00Z",
+							icon_url: genericAddonIconURL,
+							current_version: {
+								version: '0.0.0.0',
+								files: [{
+									id: -1,
+									url: xpiURL,
+									permissions: [],
+								}],
+							},
+							name,
+							description: "[injected]",
+							summary: "[injected]",
+						}),
+						notes: null,
+					});
+					// if('updateURL' in addonInfo) {
+					// 	if(!addonUpdateManifests) {
+					// 		addonUpdateManifests = new Map();
+					// 	}
+					// 	const {updateURL} = addonInfo;
+					// 	let updateManifest = addonUpdateManifests.get(updateURL);
+					// 	if(!updateManifest) {
+					// 		checkFetch();
+					// 		const response = await fetch(updateURL, userAgent ? {
+					// 			headers: {
+					// 				'User-Agent': userAgent,
+					// 			},
+					// 		} : undefined);
+					// 		updateManifest = /** @type {AddonUpdateManifest} */(await response.json());
+					// 		addonUpdateManifests.set(updateURL, updateManifest);
+					// 	}
+					// 	let myUpdates = updateManifest.addons[guid].updates;
+					// 	myUpdates.sort((a, b) => {
+					// 		const aVersion = `${a.version}.0.0.0`.split(/\./g).map(x => +x);
+					// 		const bVersion = `${b.version}.0.0.0`.split(/\./g).map(x => +x);
+					// 		return (
+					// 			(b[3] - a[3]) ||
+					// 			(b[2] - a[2]) ||
+					// 			(b[1] - a[1]) ||
+					// 			(b[0] - a[0])
+					// 		);
+					// 	});
+					// 	const newest = myUpdates[0];
+					// 	addonEntries.push(/** @type {AddonCollectionEntry} */({
+					// 		addon: {
+					// 			guid,
+					// 			name,
+					// 		},
+					// 		notes: null,
+					// 	}))
+					// } else {
+					// 	throw new Error('TODO');
+					// }
+				}
+				break;
+			}
 			default:
 				throw new Error(`Unknown addon source type: ${/** @type {any} */(source).type}`);
 				break;
@@ -346,10 +442,13 @@ async function build(config, configPath) {
 		const moveToTopGUIDs = config.moveToTop.flatMap(guidOrSourceName => {
 			if(guidOrSourceName in config.sources) {
 				const source = config.sources[guidOrSourceName];
-				if(source.type !== 'guids') {
+				if(source.type === 'guids') {
+					return source.guids;
+				} else if(source.type === 'addonURLs') {
+					return source.addons.map(addon => addon.guid);
+				} else {
 					throw new Error(`No GUID list for ${guidOrSourceName}`);
 				}
-				return source.guids;
 			} else {
 				return guidOrSourceName;
 			}
