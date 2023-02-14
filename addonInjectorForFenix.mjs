@@ -383,7 +383,7 @@ async function build(config, configPath) {
 								files: [{
 									id: -1,
 									url: xpiURL,
-									permissions: [],
+									permissions: ["https://unknown-permissions.use-at-your-own-risk.addon-injector-for-fenix.invalid/*"],
 								}],
 							},
 							name,
