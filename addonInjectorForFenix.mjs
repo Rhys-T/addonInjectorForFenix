@@ -515,12 +515,21 @@ async function inject(addonsJSON, config, configPath, options) {
 				const procDescActor = new Actor(client, processDescriptor.actor);
 				const procTargetMsg = await procDescActor.request('getTarget');
 				const procTargetActor = new Actor(client, procTargetMsg.process.actor, procTargetMsg.process);
+				const {frames: frameList} = await procTargetActor.request('listFrames');
+				let frameFound = false;
+				for(const frameInfo of frameList) {
+					if(frameInfo.url === 'chrome://geckoview/content/geckoview.xhtml') {
+						await procTargetActor.request('switchToFrame', {windowId: frameInfo.id});
+						frameFound = true;
+						break;
+					}
+				}
+				if(!frameFound) {
+					throw new Error('No geckoview.xhtml frames found - please open a tab and try again');
+				}
 				const procConsole = procTargetActor._get('console');
 				const resultFromFirefox = await procConsole.evaluateJSAsync(async function(addonsJSON, app, shouldFixupAddonData) {
 					/// <reference path="./mozilla.d.ts" />
-					if(typeof Cu === 'undefined') {
-						throw new Error('Cu not defined - restart Firefox with a tab open and try again');
-					}
 					const dummyScope = {};
 					
 					if(shouldFixupAddonData) {
