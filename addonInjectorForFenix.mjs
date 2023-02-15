@@ -408,7 +408,7 @@ async function build(config, configPath) {
 								}],
 							},
 							name,
-							description: "[injected]",
+							description: `This addon was manually injected by addonInjectorForFenix from a '.xpi' URL. No long description is available.\n\nURL: ${xpiURL}`,
 							summary: "[injected]",
 						}),
 						notes: null,
