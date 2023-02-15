@@ -16,6 +16,17 @@ import url from 'url';
 import toml from '@ltd/j-toml';
 import { Command } from 'commander';
 
+// Silence warnings about Fetch API
+const processEvents = /** @type {any} */ (process)._events;
+if(typeof processEvents?.warning === 'function') {
+	const oldHandler = processEvents.warning;
+	processEvents.warning = function(warning, ...x) {
+		if(!(warning.name === 'ExperimentalWarning' && /\bFetch API\b/i.test(warning.message))) {
+			return oldHandler(warning, ...x);
+		}
+	}
+}
+
 /**
  * @typedef {Object} AddonCollectionPage
  * @property {number} page_size
