@@ -15,6 +15,7 @@ import url from 'url';
 // import fsp from 'fs/promises';
 import toml from '@ltd/j-toml';
 import { Command } from 'commander';
+import orderBy from 'lodash.orderby';
 
 // Silence warnings about Fetch API
 const processEvents = /** @type {any} */ (process)._events;
@@ -46,6 +47,7 @@ if(typeof processEvents?.warning === 'function') {
  * @typedef {Object} Config
  * @property {string[]} useSources
  * @property {number} maxFetches
+ * @property {'-popularity'|'popularity'|'-name'|'name'|'-added'|'added'|false} sortCombinedList
  * @property {string[] | undefined} moveToTop
  * @property {boolean | 'auto'} noFwmark
  * @property {string | undefined} device
@@ -248,6 +250,7 @@ function loadConfig(options) {
 	
 	const defaults = /** @type {Config} */(toml.parse(`
 		useSources = ['iceraven']
+		sortCombinedList = false
 		maxFetches = 10
 		noFwmark = 'auto'
 		app = 'org.mozilla.firefox'
@@ -431,6 +434,16 @@ async function build(config, configPath) {
 				throw new Error(`Unknown addon source type: ${/** @type {any} */(source).type}`);
 				break;
 		}
+	}
+	if(config.sortCombinedList) {
+		const [, sortMinus, sortType] = /** @type {RegExpMatchArray} */ (/^(-?)(\w+)$/.exec(config.sortCombinedList));
+		/** @type {(AddonCollectionEntry) => (number | string | Date)} */
+		const sortKey = {
+			name: ({ addon }) => addon.name.toLowerCase(),
+			added: ({ addon }) => new Date(addon.created),
+			popularity: ({ addon }) => addon.weekly_downloads,
+		}[sortType];
+		addonEntries = orderBy(addonEntries, [sortKey], [sortMinus ? 'desc' : 'asc']);
 	}
 	if(config.moveToTop) {
 		const moveToTopGUIDs = config.moveToTop.flatMap(guidOrSourceName => {
