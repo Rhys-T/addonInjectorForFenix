@@ -270,7 +270,7 @@ function loadConfig(options) {
 		[sources.mozilla]
 		type = 'addonCollection'
 		user = 'mozilla'
-		collection = '7dfae8669acc4312a65e8ba5553036'
+		collection = 'Extensions-for-Android'
 	`, {bigint: false}));
 	let configDirect;
 	try {
