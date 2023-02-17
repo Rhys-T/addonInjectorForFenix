@@ -586,7 +586,7 @@ async function inject(addonsJSON, config, configPath, options) {
 					}
 				}
 				const procConsole = procTargetActor._get('console');
-				const resultFromFirefox = await procConsole.evaluateJSAsync(async function(addonsJSON, app, shouldFixupAddonData) {
+				const resultFromFirefox = await procConsole.evaluateJSAsync(async function(/** @type {string} */ addonsJSON, /** @type {string} */ app, /** @type {Boolean} */ shouldFixupAddonData) {
 					const dummyScope = {};
 					
 					if(shouldFixupAddonData) {
