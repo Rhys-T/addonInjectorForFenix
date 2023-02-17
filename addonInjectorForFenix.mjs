@@ -531,7 +531,7 @@ async function inject(addonsJSON, config, configPath, options) {
 	const app = 'app' in options ? options.app : config.app;
 	
 	await withTempDir(async myTmpDir => {
-		await withADBSocketForwarded(noFwmark, device, app, myTmpDir, async socketPath => {
+		await withADBSocketForwarded(noFwmark, device, app, myTmpDir, async (socketPath, adb) => {
 			const {browser, tabs} = await Foxdriver.attach(socketPath, -99999);
 			const {client} = browser;
 			try {
@@ -549,7 +549,40 @@ async function inject(addonsJSON, config, configPath, options) {
 					}
 				}
 				if(!frameFound) {
-					throw new Error('No geckoview.xhtml frames found - please open a tab and try again');
+					console.warn('No geckoview.xhtml frames found - trying to open a dummy tab');
+					try {
+						await new Promise((resolve, reject) => {
+							const timeout = setTimeout(reject, 2000);
+							let gotFrame = false;
+							function handleUpdate(msg) {
+								if(gotFrame) {
+									return;
+								}
+								if(!msg.frames) {
+									return;
+								}
+								for(const frame of msg.frames) {
+									if(!frame.destroy && frame.url === 'chrome://geckoview/content/geckoview.xhtml') {
+										procTargetActor.request('switchToFrame', {windowId: frame.id}).then(() => {
+											gotFrame = true;
+											procTargetActor.off('frameUpdate', handleUpdate);
+											clearTimeout(timeout);
+											resolve(null);
+										});
+										break;
+									}
+								}
+							}
+							procTargetActor.on('frameUpdate', handleUpdate);
+							const adbResult = child_process.spawnSync(adb.cmd, [...adb.args, 'shell', `am start -a android.intent.action.VIEW -n ${escapeShellArg(app)}/org.mozilla.fenix.IntentReceiverActivity -d about:blank`]);
+							if(adbResult.status) {
+								clearTimeout(timeout);
+								reject();
+							}
+						});
+					} catch(e) {
+						throw new Error(`No geckoview.xhtml frames found, and couldn't create one - please open a tab and try again`);
+					}
 				}
 				const procConsole = procTargetActor._get('console');
 				const resultFromFirefox = await procConsole.evaluateJSAsync(async function(addonsJSON, app, shouldFixupAddonData) {
@@ -681,7 +714,7 @@ async function withTempDir(fn, ...args) {
  * @param {Config['device']} device
  * @param {Config['app']} app
  * @param {string} myTmpDir
- * @param {(socketPath: string, ...A) => (R|Promise<R>)} fn 
+ * @param {(socketPath: string, adb: {cmd: string, args: string[]}, ...A) => (R|Promise<R>)} fn 
  * @param {A} args
  * @returns {Promise<R>}
  */
@@ -715,7 +748,7 @@ async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...ar
 	}
 	let result;
 	try {
-		result = fn(socketPath, ...args);
+		result = fn(socketPath, {cmd: adbCmd, args: adbArgs}, ...args);
 	} finally {
 		const adbResult = child_process.spawnSync(adbCmd, [...adbArgs, 'forward', '--remove', local], {stdio: 'inherit'});
 		if(adbResult.error) {
@@ -725,4 +758,12 @@ async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...ar
 		}
 	}
 	return result;
+}
+
+/**
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeShellArg(str) {
+	return `'${str.replace(/'/g, `'\\''`)}'`;
 }
