@@ -5,6 +5,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 // @ts-check
+/// <reference path="./mozilla.d.ts" />
 import process from 'process';
 import { promisify } from 'util';
 import path from 'path';
@@ -586,13 +587,11 @@ async function inject(addonsJSON, config, configPath, options) {
 				}
 				const procConsole = procTargetActor._get('console');
 				const resultFromFirefox = await procConsole.evaluateJSAsync(async function(addonsJSON, app, shouldFixupAddonData) {
-					/// <reference path="./mozilla.d.ts" />
 					const dummyScope = {};
 					
 					if(shouldFixupAddonData) {
 						/** @type {AddonCollectionPage} */
 						const addonList = JSON.parse(addonsJSON);
-						/** @type {?Map<string, object>} */
 						let allXPIAddonsByID = null;
 						for(const addonEntry of addonList.results) {
 							/** @type {any} */
