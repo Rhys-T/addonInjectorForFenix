@@ -16,31 +16,20 @@ type XPIAddon = {
 	rootURI: string;
 	icons?: Record<number, string>;
 };
-declare class Mozilla_OStream {
-	write(data: string, size: number): void;
-	flush(): void;
-}
-declare class Mozilla_FileUtils_File {
-	constructor(path: string);
-	leafName: string;
-	path: string;
-	fileSize: number;
-	permissions: number;
-	lastModifiedTime: number;
-	directoryEntries: Iterable<Mozilla_FileUtils_File>;
-}
 type MozillaModules = {
 	'resource://gre/modules/addons/XPIDatabase.jsm': {XPIDatabase: {
 		getAddons: () => XPIAddon[];
-	}};
-	'resource://gre/modules/FileUtils.jsm': {FileUtils: {
-		File: typeof Mozilla_FileUtils_File;
-		openAtomicFileOutputStream: (file: Mozilla_FileUtils_File) => Mozilla_OStream;
-		closeAtomicFileOutputStream: (stream: Mozilla_OStream) => void;
 	}};
 };
 type MozillaModuleURL = keyof MozillaModules;
 
 declare var Cu: {
 	['import']: <K extends MozillaModuleURL>(url: K, scope?: object) => MozillaModules[K];
+};
+declare var IOUtils: {
+	getChildren: (dirPath: string) => Promise<string[]>;
+	writeUTF8: (path: string, contents: string, options?: Partial<{
+		tmpPath: string,
+	}>) => Promise<number>;
+	setModificationTime: (path: string, modTime: number) => Promise<void>;
 };

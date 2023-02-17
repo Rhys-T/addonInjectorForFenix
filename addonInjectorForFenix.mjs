@@ -641,12 +641,11 @@ async function inject(addonsJSON, config, configPath, options) {
 						addonsJSON = JSON.stringify(addonList);
 					}
 					
-					const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm", dummyScope);
-					const filesDir = new FileUtils.File(`/data/data/${app}/files`);
-					const re = /^mozilla_components_addon_collection_.*\.json$/;
+					const filesDir = `/data/data/${app}/files`;
+					const re = /\/mozilla_components_addon_collection_[^/]*\.json$/;
 					let file;
-					for(const testFile of filesDir.directoryEntries) {
-						if(re.test(testFile.leafName)) {
+					for(const testFile of await IOUtils.getChildren(filesDir)) {
+						if(re.test(testFile)) {
 							file = testFile;
 							break;
 						}
@@ -654,31 +653,11 @@ async function inject(addonsJSON, config, configPath, options) {
 					if(!file) {
 						throw new Error('No existing cache file');
 					}
-					const oldFile = (({fileSize, permissions}) => ({fileSize, permissions}))(file);
-					const ostream = FileUtils.openAtomicFileOutputStream(file);
-					try {
-						const encodedArray = new TextEncoder().encode(addonsJSON);
-						// The stream I/O APIs in Firefox want the data as a JavaScript string containing bytes.
-						// Converting a byte array to that format basically means 'decoding' it as ISO-8859-1.
-						// You'd think I could just do:
-						// 	const encoded = new TextDecoder('latin1').decode(encodedArray);
-						// but 'latin1' is _actually_ Windows-1252, for the usual 'broken IE compatibility nonsense' reasons,
-						// and they haven't added _real_ ISO-8859-1. So I have to do it the hard way, and work around
-						// argument list length limits.
-						let encoded = '';
-						const chunkSize = 102400;
-						for(let i = 0; i < encodedArray.length; i += chunkSize) {
-							encoded += String.fromCharCode.apply(null, encodedArray.slice(i, i+chunkSize));
-						}
-						ostream.write(encoded, encoded.length);
-						ostream.flush();
-					} finally {
-						FileUtils.closeAtomicFileOutputStream(ostream);
-					}
-					file = new FileUtils.File(file.path);
-					// Not quite 100 years, because leap years, but long enough:
-					file.lastModifiedTime += 100*365*24*60*60*1000;
-					return `${oldFile.permissions.toString(8)} -> ${file.permissions.toString(8)}\n${oldFile.fileSize} -> ${file.fileSize}\nWrote to ${file.path}`;
+					await IOUtils.writeUTF8(file, addonsJSON);
+					const modTime = new Date();
+					modTime.setFullYear(modTime.getFullYear() + 100);
+					await IOUtils.setModificationTime(file, +modTime);
+					return `Wrote to ${file}`;
 				}, addonsJSON, app, config.fixupAddonData);
 				console.warn(resultFromFirefox);
 			} finally {
