@@ -513,13 +513,13 @@ async function inject(addonsJSON, config, configPath, options) {
 	const {addHook} = await import('pirates');
 	addHook((code, filename) => code.replace(
 		/^class Console\b/m,
-		`const AsyncFunction = (async x=>0).constructor;\n$&`,
+		`const AsyncFunction = (async x=>0).constructor; $&`,
 	).replace(
 		`async evaluateJSAsync(script, ...args) {`,
 		`$& const origScript = script;`,
 	).replace(
 		`await this.request('evaluateJSAsync', {`,
-		`await this.request('evaluateJSAsync', {mapped: (origScript instanceof AsyncFunction) ? {await: true} : undefined, `
+		`$& mapped: (origScript instanceof AsyncFunction) ? {await: true} : undefined, `
 	), {
 		ignoreNodeModules: false,
 		matcher: path => /\bfoxdriver\/build\/domains\/console\.js$/.test(path),
