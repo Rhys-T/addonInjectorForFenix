@@ -503,8 +503,9 @@ async function inject(addonsJSON, config, configPath, options) {
 	const net = await (await import('net')).default;
 	// Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
 	const oldCreateConnection = net.createConnection;
+	const kFakePortUseUnixSocket = Symbol('kFakePortUseUnixSocket');
 	net.createConnection = function(...args) {
-		if(args[0]?.port === -99999) {
+		if(args[0]?.port === kFakePortUseUnixSocket) {
 			args[0] = {path: args[0].host};
 		}
 		return oldCreateConnection.call(this, ...args);
@@ -524,7 +525,12 @@ async function inject(addonsJSON, config, configPath, options) {
 		ignoreNodeModules: false,
 		matcher: path => /\bfoxdriver\/build\/domains\/console\.js$/.test(path),
 	});
-	const Foxdriver = (await import('foxdriver')).default;
+	const Browser = (await import('foxdriver/build/browser.js')).default;
+	class BrowserNoTabs extends Browser {
+		async listTabs() {
+			return [];
+		}
+	}
 	const Actor = (await import('foxdriver/build/actor.js')).default;
 	
 	const noFwmark = 'noFwmark' in options ? options.noFwmark : config.noFwmark;
@@ -533,7 +539,8 @@ async function inject(addonsJSON, config, configPath, options) {
 	
 	await withTempDir(async myTmpDir => {
 		await withADBSocketForwarded(noFwmark, device, app, myTmpDir, async (socketPath, adb) => {
-			const {browser, tabs} = await Foxdriver.attach(socketPath, -99999);
+			const browser = new /** @type {(host: string, port: number | typeof kFakePortUseUnixSocket) => void} */(/** @type {unknown} */(BrowserNoTabs))(socketPath, kFakePortUseUnixSocket);
+			await browser.connect();
 			const {client} = browser;
 			try {
 				const {processDescriptor} = await browser.request('getProcess', {id: 0});
