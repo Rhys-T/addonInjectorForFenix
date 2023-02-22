@@ -425,6 +425,13 @@ async function build(config, configPath) {
 							name,
 							description: `This addon was manually injected by addonInjectorForFenix from a '.xpi' URL. No long description is available.\n\nURL: ${xpiURL}`,
 							summary: "[injected]",
+							ratings: {
+								"average": 0,
+								"bayesian_average": 0,
+								"count": 0,
+								"text_count": 0
+							},
+							weekly_downloads: 0,
 						}),
 						notes: null,
 					});
