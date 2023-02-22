@@ -498,7 +498,6 @@ async function build(config, configPath) {
  */
 async function inject(addonsJSON, config, configPath, options) {
 	console.warn('Injecting');
-	const deviceID = options.device || config.device;
 	JSON.parse(addonsJSON); // validate
 	const net = await (await import('net')).default;
 	// Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
