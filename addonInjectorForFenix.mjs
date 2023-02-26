@@ -447,7 +447,14 @@ async function build(config, configPath) {
 		const [, sortMinus, sortType] = /** @type {RegExpMatchArray} */ (/^(-?)(\w+)$/.exec(config.sortCombinedList));
 		/** @type {(AddonCollectionEntry) => (number | string | Date)} */
 		const sortKey = {
-			name: ({ addon }) => addon.name.toLowerCase(),
+			name: ({ addon }) => {
+				if(typeof addon.name === 'string') {
+					return addon.name.toLowerCase();
+				} else {
+					const localName = addon.name?.[addon.default_locale || 'en-us'];
+					return (localName || addon.guid).toLowerCase();
+				}
+			},
 			added: ({ addon }) => new Date(addon.created),
 			popularity: ({ addon }) => addon.weekly_downloads,
 		}[sortType];
