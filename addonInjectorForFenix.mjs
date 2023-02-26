@@ -651,11 +651,29 @@ async function inject(addonsJSON, config, configPath, options) {
 								}
 							}
 						}
+						if(app === 'io.github.forkmaintainers.iceraven') {
+							// services.addons.mozilla.org 'unwraps' the correct locale for various strings when passed 'lang',
+							// and 'addonURLs' sources generate fake addon entries containing non-localized strings.
+							// Iceraven can't handle non-localized strings here, and will reject the cache if I leave them that way.
+							// (Its PagedAddonCollectionProvider seems to be based on an older version of the upstream AddonCollectionProvider.)
+							// Re-wrap any non-localized strings, claiming they're in the default locale that Iceraven will fall back to.
+							const DEFAULT_LOCALE = 'en-us'; // from Addon.DEFAULT_LOCALE in Firefox for Android source
+							for(const addonEntry of addonList.results) {
+								/** @type {any} */
+								const {addon} = addonEntry;
+								for(const key of ['name', 'description', 'summary']) {
+									if(typeof addon[key] === 'string') {
+										addon[key] = {[addon.default_locale || DEFAULT_LOCALE]: addon[key]};
+									}
+								}
+							}
+						}
 						addonsJSON = JSON.stringify(addonList);
 					}
 					
 					const filesDir = `/data/data/${app}/files`;
-					const re = /\/mozilla_components_addon_collection_[^/]*\.json$/;
+					// Iceraven formats the filename a little differently than Firefox - this should find both.
+					const re = /\/[^/]*_components_addon_collection_[^/]*\.json$/;
 					let file;
 					for(const testFile of await IOUtils.getChildren(filesDir)) {
 						if(re.test(testFile)) {
