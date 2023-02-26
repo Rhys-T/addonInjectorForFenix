@@ -661,7 +661,7 @@ async function inject(addonsJSON, config, configPath, options) {
 						if(app === 'io.github.forkmaintainers.iceraven') {
 							// services.addons.mozilla.org 'unwraps' the correct locale for various strings when passed 'lang',
 							// and 'addonURLs' sources generate fake addon entries containing non-localized strings.
-							// Iceraven can't handle non-localized strings here, and will reject the cache if I leave them that way.
+							// Iceraven doesn't pass 'lang' and can't handle non-localized strings here, and will reject the cache if I leave them that way.
 							// (Its PagedAddonCollectionProvider seems to be based on an older version of the upstream AddonCollectionProvider.)
 							// Re-wrap any non-localized strings, claiming they're in the default locale that Iceraven will fall back to.
 							const DEFAULT_LOCALE = 'en-us'; // from Addon.DEFAULT_LOCALE in Firefox for Android source
