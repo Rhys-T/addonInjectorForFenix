@@ -16,7 +16,6 @@ import url from 'url';
 // import fsp from 'fs/promises';
 import toml from '@ltd/j-toml';
 import { Command } from 'commander';
-import orderBy from 'lodash.orderby';
 
 // Silence warnings about Fetch API
 const processEvents = /** @type {any} */ (process)._events;
@@ -458,7 +457,23 @@ async function build(config, configPath) {
 			added: ({ addon }) => new Date(addon.created),
 			popularity: ({ addon }) => addon.weekly_downloads,
 		}[sortType];
-		addonEntries = orderBy(addonEntries, [sortKey], [sortMinus ? 'desc' : 'asc']);
+		const dir = sortMinus ? -1 : 1;
+		/**
+		 * @param {AddonCollectionEntry} a
+		 * @param {AddonCollectionEntry} b
+		*/
+		const sortFunc = (a, b) => {
+			const aKey = sortKey(a);
+			const bKey = sortKey(b);
+			if(aKey < bKey) {
+				return -dir;
+			} else if(aKey > bKey) {
+				return dir;
+			} else {
+				return 0;
+			}
+		};
+		addonEntries.sort(sortFunc);
 	}
 	if(config.moveToTop) {
 		const moveToTopGUIDs = config.moveToTop.flatMap(guidOrSourceName => {

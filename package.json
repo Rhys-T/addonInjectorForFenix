@@ -6,7 +6,6 @@
     "@ltd/j-toml": "^1.38.0",
     "commander": "^10.0.0",
     "foxdriver": "^1.0.6",
-    "lodash.orderby": "^4.6.0",
     "pirates": "^4.0.5"
   },
   "scripts": {},
