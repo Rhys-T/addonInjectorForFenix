@@ -11,5 +11,8 @@
   "scripts": {},
   "bin": {
     "addonInjectorForFenix": "./addonInjectorForFenix.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^18.15.11"
   }
 }
