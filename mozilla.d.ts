@@ -33,3 +33,14 @@ declare var IOUtils: {
 	}>) => Promise<number>;
 	setModificationTime: (path: string, modTime: number) => Promise<void>;
 };
+type XPCOMInterface<X> = unknown & {___: X};
+declare var Ci: {
+	nsIFile: XPCOMInterface<{
+		path: string;
+	}>;
+}
+declare var Services: {
+	dirsvc: {
+		get: <X>(dirCode: string, interface: XPCOMInterface<X>) => X;
+	};
+}

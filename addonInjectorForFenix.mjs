@@ -693,7 +693,7 @@ async function inject(addonsJSON, config, configPath, options) {
 						addonsJSON = JSON.stringify(addonList);
 					}
 					
-					const filesDir = `/data/data/${app}/files`;
+					const filesDir = /** @type {RegExpMatchArray} */(Services.dirsvc.get('ProfD', Ci.nsIFile).path.match(/^(.*\/files)(?:\/|$)/))[1];
 					// Iceraven formats the filename a little differently than Firefox - this should find both.
 					const re = /\/[^/]*_components_addon_collection_[^/]*\.json$/;
 					let file;
