@@ -528,7 +528,7 @@ async function build(config, configPath) {
 async function inject(addonsJSON, config, configPath, options) {
 	console.warn('Injecting');
 	JSON.parse(addonsJSON); // validate
-	const net = await (await import('net')).default;
+	const net = (await import('net')).default;
 	// Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
 	const oldCreateConnection = net.createConnection;
 	const kFakePortUseUnixSocket = Symbol('kFakePortUseUnixSocket');
