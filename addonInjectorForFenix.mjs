@@ -693,7 +693,15 @@ async function inject(addonsJSON, config, configPath, options) {
 						addonsJSON = JSON.stringify(addonList);
 					}
 					
-					const filesDir = /** @type {RegExpMatchArray} */(Services.dirsvc.get('ProfD', Ci.nsIFile).path.match(/^(.*\/files)(?:\/|$)/))[1];
+					const profileDir = Services.dirsvc.get('ProfD', Ci.nsIFile).path;
+					/** @type {string|null} */
+					let filesDir = profileDir;
+					while(filesDir && PathUtils.filename(filesDir) !== 'files') {
+						filesDir = PathUtils.parent(filesDir);
+					}
+					if(!filesDir) {
+						throw new Error("Couldn't find 'files' directory!");
+					}
 					// Iceraven formats the filename a little differently than Firefox - this should find both.
 					const re = /\/[^/]*_components_addon_collection_[^/]*\.json$/;
 					let file;

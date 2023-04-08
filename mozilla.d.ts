@@ -33,6 +33,10 @@ declare var IOUtils: {
 	}>) => Promise<number>;
 	setModificationTime: (path: string, modTime: number) => Promise<void>;
 };
+declare var PathUtils: {
+	filename: (path: string) => string;
+	parent: (path: string) => string|null;
+}
 type XPCOMInterface<X> = unknown & {___: X};
 declare var Ci: {
 	nsIFile: XPCOMInterface<{
