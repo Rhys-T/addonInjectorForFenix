@@ -553,6 +553,23 @@ async function inject(addonsJSON, config, configPath, options) {
 		ignoreNodeModules: false,
 		matcher: path => /\bfoxdriver\/build\/domains\/console\.js$/.test(path),
 	});
+	// Patch Foxdriver to properly throw errors if it can't connect to Firefox
+	addHook((code, filename) => code.replace(
+		`let resolveCb`,
+		`$&, rejectCb`,
+	).replace(
+		/(const resp = new Promise\()(resolve)( => \{.*?)(resolveCb = resolve)/s,
+		`$1($2, reject)$3$4; rejectCb = reject`
+	).replace(
+		/(this\._pendingRequests\.push\(\{\s*to: request\.to,\s*message: request,\s*callback:\s*resolveCb)(\s*\}\))/,
+		`$1, rejectCb$2`,
+	).replace(
+		`this.emit('end')`,
+		`for(const req of this._pendingRequests) { req.rejectCb(new Error("Lost connection to Firefox - is it set to allow remote debugging?")); } $&`,
+	), {
+		ignoreNodeModules: false,
+		matcher: path => /\bfoxdriver\/build\/client\.js$/.test(path),
+	});
 	const Browser = (await import('foxdriver/build/browser.js')).default;
 	class BrowserNoTabs extends Browser {
 		async listTabs() {
@@ -722,7 +739,7 @@ async function inject(addonsJSON, config, configPath, options) {
 				}, addonsJSON, app, config.fixupAddonData);
 				console.warn(resultFromFirefox);
 			} finally {
-				client.disconnect();
+				if(client) client.disconnect();
 			}
 		});
 	});
