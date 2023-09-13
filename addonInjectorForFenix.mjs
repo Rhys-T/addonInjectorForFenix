@@ -16,6 +16,7 @@ import url from 'url';
 // import fsp from 'fs/promises';
 import toml from '@ltd/j-toml';
 import { Command } from 'commander';
+import { installFoxdriverPatches, kFakePortUseUnixSocket } from './lib/foxdriverPatches.mjs';
 
 // Silence warnings about Fetch API
 const processEvents = /** @type {any} */ (process)._events;
@@ -528,48 +529,7 @@ async function build(config, configPath) {
 async function inject(addonsJSON, config, configPath, options) {
 	console.warn('Injecting');
 	JSON.parse(addonsJSON); // validate
-	const net = (await import('net')).default;
-	// Sneak a Unix socket spec past Foxdriver's API, which only wants host/port i.e. TCP
-	const oldCreateConnection = net.createConnection;
-	const kFakePortUseUnixSocket = Symbol('kFakePortUseUnixSocket');
-	net.createConnection = function(...args) {
-		if(args[0]?.port === kFakePortUseUnixSocket) {
-			args[0] = {path: args[0].host};
-		}
-		return oldCreateConnection.call(this, ...args);
-	};
-	// Patch Foxdriver's evaluateJSAsync to simulate top-level await when passing an async function
-	const {addHook} = await import('pirates');
-	addHook((code, filename) => code.replace(
-		/^class Console\b/m,
-		`const AsyncFunction = (async x=>0).constructor; $&`,
-	).replace(
-		`async evaluateJSAsync(script, ...args) {`,
-		`$& const origScript = script;`,
-	).replace(
-		`await this.request('evaluateJSAsync', {`,
-		`$& mapped: (origScript instanceof AsyncFunction) ? {await: true} : undefined, `
-	), {
-		ignoreNodeModules: false,
-		matcher: path => /\bfoxdriver\/build\/domains\/console\.js$/.test(path),
-	});
-	// Patch Foxdriver to properly throw errors if it can't connect to Firefox
-	addHook((code, filename) => code.replace(
-		`let resolveCb`,
-		`$&, rejectCb`,
-	).replace(
-		/(const resp = new Promise\()(resolve)( => \{.*?)(resolveCb = resolve)/s,
-		`$1($2, reject)$3$4; rejectCb = reject`
-	).replace(
-		/(this\._pendingRequests\.push\(\{\s*to: request\.to,\s*message: request,\s*callback:\s*resolveCb)(\s*\}\))/,
-		`$1, rejectCb$2`,
-	).replace(
-		`this.emit('end')`,
-		`for(const req of this._pendingRequests) { req.rejectCb(new Error("Lost connection to Firefox - is it set to allow remote debugging?")); } $&`,
-	), {
-		ignoreNodeModules: false,
-		matcher: path => /\bfoxdriver\/build\/client\.js$/.test(path),
-	});
+	installFoxdriverPatches();
 	const Browser = (await import('foxdriver/build/browser.js')).default;
 	class BrowserNoTabs extends Browser {
 		async listTabs() {
