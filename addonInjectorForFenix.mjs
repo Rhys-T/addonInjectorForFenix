@@ -782,7 +782,7 @@ async function withADBSocketForwarded(noFwmark, device, app, myTmpDir, fn, ...ar
 			try {
 				getpropResult = await promisify(child_process.exec)('getprop ro.product.manufacturer');
 			} catch(e) {}
-			if(getpropResult && getpropResult?.stdout.trim() === 'samsung') {
+			if(getpropResult?.stdout && getpropResult.stdout.trim() === 'samsung') {
 				noFwmark = true;
 			}
 		}
