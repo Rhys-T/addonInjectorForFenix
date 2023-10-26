@@ -4,7 +4,7 @@ Customizes the list of addons available in the stable version of the Firefox bro
 
 Should also be usable with the Beta and Nightly versions, as well as forks like [Fennec F-Droid][] and [Iceraven][]. See below.
 
-[Hopefully won't be needed for much longer][soon], but until I personally see Fenix install a `.xpi` from somewhere other than AMO without shenanigans, I'm going to keep it around.
+[This shouldn't be needed anymore for extensions hosted on AMO once Firefox 120 releases][soon], but extensions that are published as `.xpi` files on other sites still can't be installed normally, at least in Firefox Beta 119.0b9 - it just tries to download them instead. Until I personally see Fenix install a `.xpi` from somewhere other than AMO without shenanigans, I'm going to keep this program around.
 
 [soon]: https://blog.mozilla.org/addons/2023/08/10/prepare-your-firefox-desktop-extension-for-the-upcoming-android-release/
 
@@ -120,7 +120,7 @@ Makes no requests.
 ##### Notes
 addonInjectorForFenix doesn't look at the actual `.xpi` file at all, so it can't provide correct values for many of the fields. In particular, the description, icon, version, last-updated date, and permissions will be filled with generic placeholder values.
 
-⚠️ **Warning:** When showing the initial permissions prompt during addon installation, Fenix only looks at the values in the addon list JSON file, not the ones from the `.xpi` (which it hasn't downloaded yet at that point). addonInjectorForFenix doesn't know what permissions are being requested either, so **the prompt won't tell you what permissions the addon wants!** addonInjectorForFenix fills this field with a fake host permission for `unknown-permissions.use-at-your-own-risk.addon-injector-for-fenix.invalid`, as a reminder that the real permissions aren't being shown. Make sure you trust any addons you install this way!
+⚠️ **Warning:** When showing the initial permissions prompt during addon installation, Fenix only looks at the values in the addon list JSON file, not the ones from the `.xpi` (which it hasn't downloaded yet at that point). addonInjectorForFenix doesn't know what permissions are being requested either, so **the prompt won't tell you what permissions the addon wants!** addonInjectorForFenix fills this field with a fake host permission for `unknown-permissions.use-at-your-own-risk.addon-injector-for-fenix.invalid`, as a reminder that the real permissions aren't being shown. Make sure you trust any addons you install this way! (Firefox Beta 119.0b9 - and presumably Firefox 120+, once it comes out - _does_ grab the file and show the correct permissions once you start trying to install an extension, so you won't see this warning pseudo-domain there.)
 
 During later injections, addonInjectorForFenix will attempt to replace these placeholder values with real ones for any addons that are already installed.
 
