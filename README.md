@@ -2,7 +2,7 @@
 
 Customizes the list of addons available in the stable version of the Firefox browser for Android™ (Fenix/Daylight), so that you can install addons that aren't on Mozilla's official list of addons that work on mobile. Does not require root - just `adb` access.
 
-Should also be usable with the Beta and Nightly versions, as well as forks like [Fennec F-Droid][] and [Iceraven][]. See below.
+Should also be usable with the Beta and Nightly versions, as well as forks like [Fennec F-Droid][] and [Iceraven][]. [See below.][forks]
 
 [This shouldn't be needed anymore for extensions hosted on AMO once Firefox 120 releases][soon], but extensions that are published as `.xpi` files on other sites still can't be installed normally, at least in Firefox Beta 119.0b9 - it just tries to download them instead. Until I personally see Fenix install a `.xpi` from somewhere other than AMO without shenanigans, I'm going to keep this program around.
 
@@ -10,6 +10,7 @@ Should also be usable with the Beta and Nightly versions, as well as forks like 
 
 [Fennec F-Droid]: https://f-droid.org/en/packages/org.mozilla.fennec_fdroid/
 [Iceraven]: https://github.com/fork-maintainers/iceraven-browser
+[forks]: #with-other-firefox-variantsforks
 
 ## ⚠️ Warning
 
@@ -39,13 +40,28 @@ The updated addon list should take effect immediately, without needing to relaun
 
 ### With other Firefox variants/forks
 
-This program can also inject into the Beta and Nightly versions of Firefox for Android, as well as forks like [Fennec F-Droid][] and [Iceraven][]. While they tend to already let you switch to a custom addon collection, doing it this way instead  still has a few advantages:
+This program can also inject into the Beta and Nightly versions of Firefox for Android, as well as forks like [Fennec F-Droid][] and [Iceraven][]. While they tend to already let you switch to a custom addon collection, doing it this way instead still has a few advantages:
 
 - You don't have to create a Mozilla account and a public list of addons you want to install.
 - You can install addons that aren't on addons.mozilla.org at all.
 - You can install more than 50 addons (although Iceraven already lets you do that).
 
 Find the (reverse-domain-name-looking) package ID for the Firefox-based browser you're using. Either pass it to the `-a`/`--app` option to addonInjectorForFenix, or set the `app` setting at the top level of your config file.
+
+<details><summary>Package IDs for various Firefox-based browsers</summary>
+
+| Name                   | ID                                         |
+| ---------------------- | ------------------------------------------ |
+| Firefox                | `org.mozilla.firefox` (default)            |
+| Firefox Beta           | `org.mozilla.firefox_beta`                 |
+| Firefox Nightly        | `org.mozilla.fenix`                        |
+| Fennec F-Droid         | `org.mozilla.fennec_fdroid`                |
+| Mull                   | `us.spotco.fennec_dos`                     |
+| Iceraven               | `io.github.forkmaintainers.iceraven`       |
+| SmartCookieWeb         | `com.cookiegames.smartcookie`              |
+| SmartCookieWeb Preview | `com.cookiejarapps.android.smartcookieweb` |
+
+</details>
 
 ## Known limitations
 
