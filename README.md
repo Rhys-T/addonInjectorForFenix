@@ -105,6 +105,12 @@ There are two predefined sources: [`mozilla`][mozsrc] (the official list that An
 [mozsrc]: https://addons.mozilla.org/en-US/firefox/collections/4757633/Extensions-for-Android/
 [icesrc]: https://addons.mozilla.org/en-US/firefox/collections/16201230/What-I-want-on-Fenix/
 
+### Maximum number of requests
+
+By default, the `build` step throws an error if it has to make more than 10 requests.[^whyMaxFetches] If you get a `Too many fetches required, aborting` error, you can set `maxFetches` to a larger number at the top level of `config.toml`. You can also set it to `-1` to allow any number of requests.
+
+[^whyMaxFetches]: I wanted to make sure that it couldn't get stuck in a loop hammering Mozilla's servers if I screwed anything up, for instance by requesting page 1 of a collection over and over and never moving to page 2.
+
 ### Source types
 
 #### `addonCollection`
