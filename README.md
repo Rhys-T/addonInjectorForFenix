@@ -4,13 +4,18 @@ Customizes the list of addons available in the stable version of the Firefox bro
 
 Should also be usable with the Beta and Nightly versions, as well as forks like [Fennec F-Droid][] and [Iceraven][]. [See below.][forks]
 
-[This shouldn't be needed anymore for extensions hosted on AMO once Firefox 120 releases][soon], but extensions that are published as `.xpi` files on other sites still can't be installed normally, at least in Firefox Beta 119.0b9 - it just tries to download them instead. Until I personally see Fenix install a `.xpi` from somewhere other than AMO without shenanigans, I'm going to keep this program around.
-
-[soon]: https://blog.mozilla.org/addons/2023/08/10/prepare-your-firefox-desktop-extension-for-the-upcoming-android-release/
-
 [Fennec F-Droid]: https://f-droid.org/en/packages/org.mozilla.fennec_fdroid/
 [Iceraven]: https://github.com/fork-maintainers/iceraven-browser
 [forks]: #with-other-firefox-variantsforks
+
+## Still potentially useful on Firefox 120+
+
+[Firefox 120 now lets you install arbitrary extensions from addons.mozilla.org][prepare] (as long as you go to the desktop version of AMO), and no longer disables extensions that aren't on the official list. However, extensions that are published as `.xpi` files on other sites still can't normally be installed - it just tries to download them instead. Until I personally see Fenix install a `.xpi` from somewhere other than AMO without shenanigans, I'm going to keep this program around.
+
+It looks like Firefox 120 supports installing addons through the `navigator.mozAddonManager` API (available only to AMO), but not from a simple link to a `.xpi` file. I may end up writing a simplified version of this script for v120+ that just tells it to install an addon from a `.xpi` URL, rather than messing with the addon list like this does. For now, you can still use this program and [the `addonURLs` source type][] to install them.
+
+[prepare]: https://blog.mozilla.org/addons/2023/08/10/prepare-your-firefox-desktop-extension-for-the-upcoming-android-release/
+[the `addonURLs` source type]: #addonurls
 
 ## ⚠️ Warning
 
